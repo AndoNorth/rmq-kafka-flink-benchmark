@@ -1,40 +1,96 @@
 version: "3.8"
 
 services:
+
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:3.12-management
+    hostname: rabbitmq
     ports:
       - "5672:5672"
       - "15672:15672"
+      - "5552:5552"
+    environment:
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbitmq_stream advertised_host rabbitmq"
+      RABBITMQ_ERLANG_COOKIE: "RABBITMQCOOKIE123"
+    command: >
+      bash -c "
+      rabbitmq-plugins enable --offline rabbitmq_stream &&
+      rabbitmq-server"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   zookeeper:
     image: wurstmeister/zookeeper:latest
     ports:
       - "2181:2181"
-    environment:
-      - ALLOW_ANONYMOUS_LOGIN=yes
 
   kafka:
     image: wurstmeister/kafka:2.13-2.8.1
+    hostname: kafka
     ports:
       - "9092:9092"
     environment:
       KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
       KAFKA_LISTENERS: PLAINTEXT://:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+
     depends_on:
       - zookeeper
+
+  # Kafka topic init with SCALE_FACTOR
+  kafka-init:
+    image: wurstmeister/kafka:2.13-2.8.1
+    depends_on:
+      - kafka
+    entrypoint: >
+      bash -c '
+        sleep 15 &&
+        kafka-topics.sh --create \
+          --if-not-exists \
+          --topic events \
+          --bootstrap-server kafka:9092 \
+          --partitions '"${SCALE_FACTOR}"' \
+          --replication-factor 1
+      '
+
+  # RabbitMQ superstream init
+  rabbitmq-init:
+    image: rabbitmq:3.12-management
+    depends_on:
+      - rabbitmq
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "RABBITMQCOOKIE123"
+    entrypoint: >
+      bash -c "
+        echo 'Waiting for RabbitMQ node...' &&
+        until rabbitmqctl -n rabbit@rabbitmq ping 2>/dev/null; do
+          echo 'RabbitMQ not ready yet...'
+          sleep 5
+        done &&
+        echo 'Stream plugin loaded. Creating superstream...' &&
+        rabbitmq-plugins enable rabbitmq_stream &&
+        until rabbitmq-streams -n rabbit@rabbitmq add_super_stream events --partitions ${SCALE_FACTOR} 2>&1 | grep -E -q 'Super stream|already exists'; do
+          echo 'Retrying superstream creation...'
+          sleep 5
+        done
+        echo 'Superstream created with ${SCALE_FACTOR} partitions'
+      "
+
 
   akhq:
     image: tchiotludo/akhq:0.26.0
     ports:
       - "8082:8080"
-    # environment:
-    #   - "AKHQ_CONNECTIONS_KAFKA-cluster_BOOTSTRAPSERVERS=kafka:9092"
-    #   - "AKHQ_CONNECTIONS_KAFKA-cluster_NAME=kafka-cluster"
-    #   - "AKHQ_SECURITY_DEFAULTGROUPS=admin"
     volumes:
       - ./akhq-config.yaml:/app/application.yml
     depends_on:
@@ -43,10 +99,11 @@ services:
   jobmanager:
     build: ./flink
     command: jobmanager
-    environment:
-      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+    hostname: jobmanager
     ports:
       - "8081:8081"
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
     volumes:
       - ./flink-jobs:/opt/flink/jobs
 
@@ -55,18 +112,25 @@ services:
     command: taskmanager
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
-      - TASK_MANAGER_NUMBER_OF_TASK_SLOTS=4
+      - TASK_MANAGER_NUMBER_OF_TASK_SLOTS=${TASK_SLOTS}
     depends_on:
       - jobmanager
 
-  rabbitmqproducer:
-    build: ./rabbitmq-producer
-    depends_on:
-      - rabbitmq
-
   kafkaproducer:
     build: ./kafka-producer
+    environment:
+      - TOTAL_MESSAGES=${TOTAL_MESSAGES}
+      - DURATION_SECONDS=${DURATION_SECONDS}
+      - KEYED=true
     depends_on:
-      - kafka
+      - kafka-init
 
+  rabbitmqproducer:
+    build: ./rabbitmq-producer
+    environment:
+      - TOTAL_MESSAGES=${TOTAL_MESSAGES}
+      - DURATION_SECONDS=${DURATION_SECONDS}
+      - SCALE_FACTOR=${SCALE_FACTOR}
+    depends_on:
+      - rabbitmq-init
 
