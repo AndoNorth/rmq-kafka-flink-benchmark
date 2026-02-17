@@ -10,7 +10,6 @@ docker compose -f kk-rmq-flink-compose.yaml up --build
   --scale rabbitmqproducer=${PRODUCER_SCALE} \
   --scale taskmanager=${TASKMANAGER_SCALE} -d )
 
-
 # one line
 docker exec rmq-kafka-flink-benchmark-jobmanager-1 flink run -py /opt/flink/jobs/rmq-job.py
 docker exec rmq-kafka-flink-benchmark-jobmanager-1 flink run -py /opt/flink/jobs/kafka-job.py

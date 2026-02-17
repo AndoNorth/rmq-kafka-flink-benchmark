@@ -3,24 +3,32 @@ import json
 import time
 import random
 import asyncio
-import uamqp
 
-from rstream import SuperStreamProducer, RouteType, AMQPMessage, ConfirmationStatus 
+from rstream import SuperStreamProducer, RouteType, AMQPMessage, ConfirmationStatus, Properties
 
 TOTAL_MESSAGES = int(os.getenv("TOTAL_MESSAGES", "1000000"))
 DURATION_SECONDS = int(os.getenv("DURATION_SECONDS", "12"))
 STREAM = "events"
 
+MAX_IN_FLIGHT = int(os.getenv("MAX_IN_FLIGHT", "50"))
+
 TARGET_RATE = TOTAL_MESSAGES / DURATION_SECONDS
 INTERVAL = 1.0 / TARGET_RATE
 
 USERS = ["alice", "bob", "carol"]
+PID = os.getpid()
 
+print(f"""
+RabbitMQ Concurrent Load Test Config
+-------------------------------------
+Messages: {TOTAL_MESSAGES}
+Duration: {DURATION_SECONDS}s
+Target rate: {int(TARGET_RATE)} msg/sec
+Max in-flight: {MAX_IN_FLIGHT}
+""")
 
 async def routing_extractor(message: AMQPMessage) -> str:
-    # Hash on message_id
-    return str(message.properties.message_id)
-
+    return message.application_properties["id"]
 
 async def create_producer():
     while True:
@@ -41,21 +49,33 @@ async def create_producer():
             print(f"Connection failed: {e}. Retrying...", flush=True)
             await asyncio.sleep(5)
 
-
 def _on_publish_confirm_client(confirmation: ConfirmationStatus) -> None:
+    if not confirmation.is_confirmed:
+        print(f"❌ message {confirmation.message_id} not confirmed")
 
-     if confirmation.is_confirmed == True:
-        print("message id: " + str(confirmation.message_id) + " is confirmed")
-     else:
-         print("message id: " + str(confirmation.message_id) + " is not confirmed")
+async def send_with_retry(producer, message, semaphore):
+    async with semaphore:
+        while True:
+            try:
+                await producer.send(
+                    message=message,
+                    on_publish_confirm=_on_publish_confirm_client,
+                )
+                return
+            except Exception as e:
+                print(f"Send failed: {e}. Retrying...", flush=True)
+                await asyncio.sleep(2)
 
 async def main():
     producer = await create_producer()
+    semaphore = asyncio.Semaphore(MAX_IN_FLIGHT)
 
     start = time.time()
     next_send = start
+    tasks = []
 
     for i in range(TOTAL_MESSAGES):
+
         message_body = {
             "user": random.choice(USERS),
             "value": random.randint(1, 100),
@@ -64,46 +84,44 @@ async def main():
 
         payload = json.dumps(message_body).encode()
 
-        # Proper AMQPMessage with message_id
-        # amqp_message = AMQPMessage(
-        #     body=payload,
-        #     message_id=i,
-        #     # properties=uamqp.message.MessageProperties(message_id=i),
-        # )
         amqp_message = AMQPMessage(
-            body='a:{}'.format(i),
-            properties=uamqp.message.MessageProperties(message_id=i),
-           
+            body=payload,
+            properties=Properties(message_id=f"{PID}-{i}"),
+            application_properties={
+                "id": str(i),
+                "pid": str(PID),
+            }
         )
 
-        while True:
-            try:
-                await producer.send(
-                    message=amqp_message,
-                    on_publish_confirm=_on_publish_confirm_client,
-                )
-                break
-            except Exception as e:
-                print(f"Send failed: {e}. Retrying...", flush=True)
-                await asyncio.sleep(2)
+        task = asyncio.create_task(
+            send_with_retry(producer, amqp_message, semaphore)
+        )
+        tasks.append(task)
 
+        # Rate limiting
         next_send += INTERVAL
         sleep_time = next_send - time.time()
         if sleep_time > 0:
             await asyncio.sleep(sleep_time)
 
+        # Prevent tasks list from growing forever
+        if len(tasks) >= MAX_IN_FLIGHT:
+            done, pending = await asyncio.wait(
+                tasks,
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            tasks = list(pending)
+
+    # Wait for remaining sends
+    await asyncio.gather(*tasks)
+
     await producer.close()
 
     end = time.time()
     duration = end - start
-    print("Completed in:", duration)
-    print("Throughput:", int(TOTAL_MESSAGES / duration), "msg/sec")
-
-
-async def app():
-    await main()
-
+    print("Completed in:", duration, " secs")
+    print("Throughput:", float(TOTAL_MESSAGES / duration), "msg/sec")
 
 if __name__ == "__main__":
-    asyncio.run(app())
+    asyncio.run(main())
 

@@ -3,15 +3,18 @@ version: "3.8"
 services:
 
   rabbitmq:
-    image: rabbitmq:3.12-management
+    image: rabbitmq:3.13.7-management
     hostname: rabbitmq
+    mem_limit: 2g
     ports:
       - "5672:5672"
       - "15672:15672"
       - "5552:5552"
     environment:
-      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbitmq_stream advertised_host rabbitmq"
       RABBITMQ_ERLANG_COOKIE: "RABBITMQCOOKIE123"
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: >
+        -rabbitmq_stream advertised_host rabbitmq
+        -rabbit vm_memory_high_watermark 0.6
     command: >
       bash -c "
       rabbitmq-plugins enable --offline rabbitmq_stream &&
@@ -86,7 +89,6 @@ services:
         echo 'Superstream created with ${SCALE_FACTOR} partitions'
       "
 
-
   akhq:
     image: tchiotludo/akhq:0.26.0
     ports:
@@ -121,7 +123,6 @@ services:
     environment:
       - TOTAL_MESSAGES=${TOTAL_MESSAGES}
       - DURATION_SECONDS=${DURATION_SECONDS}
-      - KEYED=true
     depends_on:
       - kafka-init
 
@@ -130,7 +131,39 @@ services:
     environment:
       - TOTAL_MESSAGES=${TOTAL_MESSAGES}
       - DURATION_SECONDS=${DURATION_SECONDS}
-      - SCALE_FACTOR=${SCALE_FACTOR}
     depends_on:
       - rabbitmq-init
+
+  flink-job-submitter:
+    build: ./flink
+    depends_on:
+      - jobmanager
+      - kafka-init
+      - rabbitmq-init
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: jobmanager 
+      TASKMANAGER_SCALE: ${TASKMANAGER_SCALE}
+      TASK_SLOTS: ${TASK_SLOTS}
+    volumes:
+      - ./flink-jobs:/opt/flink/jobs
+    entrypoint: >
+      bash -c '
+        echo "Waiting for JobManager..." &&
+        until curl -s http://$${JOB_MANAGER_RPC_ADDRESS}:8081/overview > /dev/null; do sleep 5; done &&
+
+        echo "Calculating slots for tm_scale=$${TASKMANAGER_SCALE} and task_slots=$${TASK_SLOTS}" &&
+        TOTAL_SLOTS=$$(( $${TASKMANAGER_SCALE} * $${TASK_SLOTS} )) &&
+        echo "Total slots: $${TOTAL_SLOTS}" &&
+        HALF_SLOTS=$$(( $${TOTAL_SLOTS} / 2 )) &&
+        echo "Half slots: $${HALF_SLOTS}" &&
+
+        echo "Submitting Kafka job with parallelism $${HALF_SLOTS}/$${TOTAL_SLOTS}" &&
+        flink run -d -m $${JOB_MANAGER_RPC_ADDRESS}:8081 -p $${HALF_SLOTS} -py /opt/flink/jobs/kafka-job.py &&
+
+        echo "Submitting RabbitMQ job with parallelism $${HALF_SLOTS}/$${TOTAL_SLOTS}" &&
+        flink run -d -m $${JOB_MANAGER_RPC_ADDRESS}:8081 -p $${HALF_SLOTS} -py /opt/flink/jobs/rmq-job.py &&
+
+        echo "Done."
+      '
+
 
