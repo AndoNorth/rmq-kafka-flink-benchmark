@@ -143,9 +143,12 @@ services:
   flink-job-submitter:
     build: ./flink
     depends_on:
-      - jobmanager
-      - kafka-init
-      - rabbitmq-init
+      jobmanager:
+        condition: service_started
+      kafka-init:
+        condition: service_completed_successfully
+      rabbitmq-init:
+        condition: service_completed_successfully
     environment:
       JOB_MANAGER_RPC_ADDRESS: jobmanager 
       TASKMANAGER_SCALE: ${TASKMANAGER_SCALE}
@@ -153,6 +156,7 @@ services:
     volumes:
       - ./flink-jobs/kafka-job.py:/opt/flink/jobs/kafka-job.py:ro
       - ./flink-jobs/rmq-job.py:/opt/flink/jobs/rmq-job.py:ro
+      - ./flink-jobs/flink-rmq-stream-job/target/flink-rmq-stream-job-1.0-SNAPSHOT.jar:/opt/flink/jobs/flink-rmq-stream-job.jar:ro
     entrypoint: >
       bash -c '
         echo "Waiting for JobManager..." &&
@@ -168,7 +172,8 @@ services:
         flink run -d -m $${JOB_MANAGER_RPC_ADDRESS}:8081 -p $${HALF_SLOTS} -py /opt/flink/jobs/kafka-job.py &&
 
         echo "Submitting RabbitMQ job with parallelism $${HALF_SLOTS}/$${TOTAL_SLOTS}" &&
-        flink run -d -m $${JOB_MANAGER_RPC_ADDRESS}:8081 -p $${HALF_SLOTS} -py /opt/flink/jobs/rmq-job.py &&
+        # flink run -d -m $${JOB_MANAGER_RPC_ADDRESS}:8081 -p $${HALF_SLOTS} -py /opt/flink/jobs/rmq-job.py &&
+        flink run -d -m $${JOB_MANAGER_RPC_ADDRESS}:8081 -p $${HALF_SLOTS} /opt/flink/jobs/flink-rmq-stream-job.jar &&
 
         echo "Done."
       '
