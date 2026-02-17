@@ -64,6 +64,11 @@ services:
           --bootstrap-server kafka:9092 \
           --partitions '"${SCALE_FACTOR}"' \
           --replication-factor 1
+        echo "Waiting for kafka topic to be ready"
+        until kafka-topics.sh --bootstrap-server kafka:9092 --describe --topic events 2>/dev/null | grep -q 'PartitionCount'; do
+          echo "Waiting for Kafka topic 'events'..."
+          sleep 5
+        done
       '
 
   # RabbitMQ superstream init
@@ -107,7 +112,8 @@ services:
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
     volumes:
-      - ./flink-jobs:/opt/flink/jobs
+      - ./flink-jobs/kafka-job.py:/opt/flink/jobs/kafka-job.py:ro
+      - ./flink-jobs/rmq-job.py:/opt/flink/jobs/rmq-job.py:ro
 
   taskmanager:
     build: ./flink
@@ -145,7 +151,8 @@ services:
       TASKMANAGER_SCALE: ${TASKMANAGER_SCALE}
       TASK_SLOTS: ${TASK_SLOTS}
     volumes:
-      - ./flink-jobs:/opt/flink/jobs
+      - ./flink-jobs/kafka-job.py:/opt/flink/jobs/kafka-job.py:ro
+      - ./flink-jobs/rmq-job.py:/opt/flink/jobs/rmq-job.py:ro
     entrypoint: >
       bash -c '
         echo "Waiting for JobManager..." &&

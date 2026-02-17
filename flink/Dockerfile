@@ -7,7 +7,7 @@ RUN apt-get update && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     apt-get clean
 
-RUN pip3 install apache-flink==1.18.0
+RUN pip3 install apache-flink==1.18.0 rstream==1.0.0
 
 # Add Flink RabbitMQ connector
 RUN mkdir -p /opt/flink/lib && \
