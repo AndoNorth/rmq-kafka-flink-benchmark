@@ -1,0 +1,51 @@
+---
+# Monitoring stack: Prometheus + Grafana.
+# Start this FIRST before running either benchmark stack.
+# The "benchmark" Docker network is created here and referenced by the other
+# compose files so that Prometheus can reach producer/consumer containers.
+#
+# Usage:
+#   docker compose -f docker-compose-monitoring.yml up -d
+
+networks:
+  benchmark:
+    name: benchmark   # named explicitly so other stacks can reference it
+
+volumes:
+  prometheus_data: {}
+  grafana_data: {}
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    networks:
+      - benchmark
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3000:3000"   # Grafana UI  http://localhost:3000  (admin/admin)
+    depends_on:
+      - prometheus
+    networks:
+      - benchmark
+    restart: unless-stopped

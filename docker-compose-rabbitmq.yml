@@ -1,0 +1,101 @@
+---
+# RabbitMQ SuperStream benchmark stack.
+# Run alongside docker-compose-monitoring.yml (shares the "benchmark" network).
+#
+# Usage:
+#   docker-compose -f docker-compose-rabbitmq.yml up --build \
+#     --scale rabbitmq-producer=${PRODUCER_SCALE:-1} \
+#     --scale rabbitmq-consumer=${CONSUMER_SCALE:-1}
+
+networks:
+  benchmark:
+    external: true   # created by docker-compose-monitoring.yml
+
+services:
+  # ── Broker ──────────────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    hostname: rabbitmq
+    ports:
+      - "5552:5552"      # stream protocol
+      - "15672:15672"    # management UI  http://localhost:15672
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      # Pre-enable stream plugin without requiring a custom image.
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "${BROKER_CPUS:-2.0}"
+          memory: "${BROKER_MEMORY:-2G}"
+        reservations:
+          cpus: "1.0"
+          memory: 1G
+    networks:
+      - benchmark
+
+  # ── Producer(s) ──────────────────────────────────────────────────────────────
+  rabbitmq-producer:
+    build:
+      context: ./producer
+      dockerfile: Dockerfile
+    environment:
+      BROKER_TYPE: rabbitmq
+      BROKER_HOST: rabbitmq
+      BROKER_PORT: "5552"
+      BROKER_USER: guest
+      BROKER_PASS: guest
+      TOPIC: "${TOPIC:-benchmark}"
+      PARTITIONS: "${PARTITIONS:-8}"
+      RATE_LIMIT: "${RATE_LIMIT:-0}"
+      MSG_SIZE_BYTES: "${MSG_SIZE_BYTES:-256}"
+    labels:
+      benchmark.scrape: "true"
+      benchmark.role: "producer"
+      benchmark.broker: "rabbitmq"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "${PRODUCER_CPUS:-0.5}"
+          memory: "${PRODUCER_MEMORY:-256M}"
+    networks:
+      - benchmark
+    restart: unless-stopped
+
+  # ── Consumer(s) ──────────────────────────────────────────────────────────────
+  rabbitmq-consumer:
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile
+    environment:
+      BROKER_TYPE: rabbitmq
+      BROKER_HOST: rabbitmq
+      BROKER_PORT: "5552"
+      BROKER_USER: guest
+      BROKER_PASS: guest
+      TOPIC: "${TOPIC:-benchmark}"
+    labels:
+      benchmark.scrape: "true"
+      benchmark.role: "consumer"
+      benchmark.broker: "rabbitmq"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "${CONSUMER_CPUS:-0.5}"
+          memory: "${CONSUMER_MEMORY:-256M}"
+    networks:
+      - benchmark
+    restart: unless-stopped
