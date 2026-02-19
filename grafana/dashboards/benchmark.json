@@ -1030,7 +1030,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "editorMode": "code",
-          "expr": "sum by (container_label_com_docker_compose_service) (\n  rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service=~\"($broker)\",name!=\"\"}[1m])\n)",
+          "expr": "sum by (container_label_com_docker_compose_service) (\n  rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service=~\"^($broker)$\",name!=\"\"}[1m])\n)",
           "legendFormat": "{{container_label_com_docker_compose_service}} broker",
           "range": true,
           "refId": "A"
@@ -1106,7 +1106,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "editorMode": "code",
-          "expr": "sum by (container_label_com_docker_compose_service) (\n  container_memory_working_set_bytes{container_label_com_docker_compose_service=~\"($broker)\",name!=\"\"}\n)",
+          "expr": "sum by (container_label_com_docker_compose_service) (\n  container_memory_working_set_bytes{container_label_com_docker_compose_service=~\"^($broker)$\",name!=\"\"}\n)",
           "legendFormat": "{{container_label_com_docker_compose_service}} broker",
           "range": true,
           "refId": "A"

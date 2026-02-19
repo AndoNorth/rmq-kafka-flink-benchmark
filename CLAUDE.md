@@ -10,10 +10,10 @@ This repo contains two benchmarking stacks:
 
 2. **PoC benchmark** — compares Redpanda (Kafka-compatible) and RabbitMQ SuperStreams using Go producers and consumers with Prometheus/Grafana metrics (`docker-compose-redpanda.yml`, `docker-compose-rabbitmq.yml`, `docker-compose-monitoring.yml`, `producer/`, `consumer/`).
 
+the goal of this project is to gather metrics for Throughput msg/s, latency from producer to consumer E2E and finally resource shape CPU and RAM under different stress conditions.
+
 ## Key project conventions
 
-- Use `docker-compose` (not `docker compose`) — the machine uses the standalone CLI backed by Docker Compose v2 via Colima.
-- The Docker socket is at `~/.colima/default/docker.sock` (not `/var/run/docker.sock`). Do NOT rely on Docker SD in Prometheus; use DNS SD instead.
 - Go modules live in `producer/` and `consumer/` with separate `go.mod` files. Run `go mod tidy` inside each directory to resolve dependencies.
 - The Dockerfile runs `go mod tidy` at build time (no pre-committed `go.sum`).
 
