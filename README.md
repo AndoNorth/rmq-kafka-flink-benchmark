@@ -66,6 +66,8 @@ docker compose -f docker-compose-monitoring.yml up -d
 Open Grafana: http://localhost:3000 (credentials: `admin` / `admin`)
 Open Prometheus: http://localhost:9090
 
+- check health of metrics - http://localhost:9090/targets
+
 ### 2. Run the Redpanda benchmark
 
 ```bash
