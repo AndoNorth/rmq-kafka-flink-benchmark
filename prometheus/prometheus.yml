@@ -14,6 +14,15 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
+  # ── Container resource usage (cAdvisor) ─────────────────────────────────────
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "container_tasks_state|container_memory_failures_total"
+        action: drop
+
   # ── Redpanda producers ──────────────────────────────────────────────────────
   - job_name: redpanda-producers
     dns_sd_configs:
