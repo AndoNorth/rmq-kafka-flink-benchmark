@@ -22,8 +22,6 @@ scrape_configs:
         port: 2112
         refresh_interval: 10s
     relabel_configs:
-      - target_label: broker
-        replacement: redpanda
       - target_label: role
         replacement: producer
 
@@ -35,8 +33,6 @@ scrape_configs:
         port: 2112
         refresh_interval: 10s
     relabel_configs:
-      - target_label: broker
-        replacement: redpanda
       - target_label: role
         replacement: consumer
 
@@ -48,8 +44,6 @@ scrape_configs:
         port: 2112
         refresh_interval: 10s
     relabel_configs:
-      - target_label: broker
-        replacement: rabbitmq
       - target_label: role
         replacement: producer
 
@@ -61,7 +55,5 @@ scrape_configs:
         port: 2112
         refresh_interval: 10s
     relabel_configs:
-      - target_label: broker
-        replacement: rabbitmq
       - target_label: role
         replacement: consumer

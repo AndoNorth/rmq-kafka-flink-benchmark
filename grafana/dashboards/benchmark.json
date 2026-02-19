@@ -37,7 +37,7 @@
       "datasource": {
         "default": true,
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -124,7 +124,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (broker) (rate(benchmark_messages_produced_total[2m]))",
+          "expr": "sum by (broker) (rate(benchmark_messages_produced_total{broker=~\"$broker\"}[30s]))",
           "legendFormat": "{{broker}} producers",
           "range": true,
           "refId": "A"
@@ -134,11 +134,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {
-        "default": true,
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
+      "datasource": {},
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -224,7 +220,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (broker) (rate(benchmark_messages_consumed_total[2m]))",
+          "expr": "sum by (broker) (rate(benchmark_messages_consumed_total{broker=~\"$broker\"}[30s]))",
           "legendFormat": "{{broker}} consumers",
           "range": true,
           "refId": "A"
@@ -237,7 +233,7 @@
       "datasource": {
         "default": true,
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -324,7 +320,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (broker) (rate(benchmark_bytes_produced_total[2m]))",
+          "expr": "sum by (broker) (rate(benchmark_bytes_produced_total{broker=~\"$broker\"}[30s]))",
           "legendFormat": "{{broker}} produced",
           "range": true,
           "refId": "A"
@@ -337,7 +333,7 @@
       "datasource": {
         "default": true,
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -424,7 +420,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (broker) (rate(benchmark_bytes_consumed_total[2m]))",
+          "expr": "sum by (broker) (rate(benchmark_bytes_consumed_total{broker=~\"$broker\"}[30s]))",
           "legendFormat": "{{broker}} consumed",
           "range": true,
           "refId": "A"
@@ -449,7 +445,7 @@
       "datasource": {
         "default": true,
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -536,7 +532,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (broker, le) (rate(benchmark_e2e_latency_seconds_bucket[2m])))",
+          "expr": "histogram_quantile(0.50, sum by (broker, le) (rate(benchmark_e2e_latency_seconds_bucket{broker=~\"$broker\"}[30s])))",
           "legendFormat": "{{broker}} p50",
           "range": true,
           "refId": "A"
@@ -547,7 +543,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (broker, le) (rate(benchmark_e2e_latency_seconds_bucket[2m])))",
+          "expr": "histogram_quantile(0.95, sum by (broker, le) (rate(benchmark_e2e_latency_seconds_bucket{broker=~\"$broker\"}[30s])))",
           "legendFormat": "{{broker}} p95",
           "range": true,
           "refId": "B"
@@ -558,7 +554,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (broker, le) (rate(benchmark_e2e_latency_seconds_bucket[2m])))",
+          "expr": "histogram_quantile(0.99, sum by (broker, le) (rate(benchmark_e2e_latency_seconds_bucket{broker=~\"$broker\"}[30s])))",
           "legendFormat": "{{broker}} p99",
           "range": true,
           "refId": "C"
@@ -571,7 +567,7 @@
       "datasource": {
         "default": true,
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -623,7 +619,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (broker, le) (rate(benchmark_e2e_latency_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (broker, le) (rate(benchmark_e2e_latency_seconds_bucket{broker=~\"$broker\"}[2m])))",
           "legendFormat": "{{broker}} p50",
           "range": true,
           "refId": "A"
@@ -634,13 +630,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (broker, le) (rate(benchmark_e2e_latency_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.99, sum by (broker, le) (rate(benchmark_e2e_latency_seconds_bucket{broker=~\"$broker\"}[2m])))",
           "legendFormat": "{{broker}} p99",
           "range": true,
           "refId": "B"
         }
       ],
-      "title": "E2E Latency — 5-min summary",
+      "title": "E2E Latency — 2-min summary",
       "type": "gauge"
     },
     {
@@ -659,7 +655,7 @@
       "datasource": {
         "default": true,
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -746,7 +742,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (broker, le) (rate(benchmark_produce_ack_latency_seconds_bucket[2m])))",
+          "expr": "histogram_quantile(0.50, sum by (broker, le) (rate(benchmark_produce_ack_latency_seconds_bucket{broker=~\"$broker\"}[30s])))",
           "legendFormat": "{{broker}} ack p50",
           "range": true,
           "refId": "A"
@@ -757,7 +753,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (broker, le) (rate(benchmark_produce_ack_latency_seconds_bucket[2m])))",
+          "expr": "histogram_quantile(0.99, sum by (broker, le) (rate(benchmark_produce_ack_latency_seconds_bucket{broker=~\"$broker\"}[30s])))",
           "legendFormat": "{{broker}} ack p99",
           "range": true,
           "refId": "B"
@@ -782,7 +778,7 @@
       "datasource": {
         "default": true,
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -868,7 +864,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (broker) (rate(benchmark_produce_errors_total[2m]))",
+          "expr": "sum by (broker) (rate(benchmark_produce_errors_total{broker=~\"$broker\"}[30s]))",
           "legendFormat": "{{broker}} produce errors/s",
           "range": true,
           "refId": "A"
@@ -881,7 +877,7 @@
       "datasource": {
         "default": true,
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -967,7 +963,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (broker) (rate(benchmark_consume_errors_total[2m]))",
+          "expr": "sum by (broker) (rate(benchmark_consume_errors_total{broker=~\"$broker\"}[30s]))",
           "legendFormat": "{{broker}} consume errors/s",
           "range": true,
           "refId": "A"
@@ -985,7 +981,41 @@
     "rabbitmq"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Broker",
+        "multi": false,
+        "name": "broker",
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": false,
+            "text": "redpanda",
+            "value": "redpanda"
+          },
+          {
+            "selected": false,
+            "text": "rabbitmq",
+            "value": "rabbitmq"
+          }
+        ],
+        "query": "redpanda,rabbitmq",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
   },
   "time": {
     "from": "now-15m",
@@ -995,6 +1025,6 @@
   "timezone": "browser",
   "title": "Broker Benchmark",
   "uid": "broker-benchmark",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
