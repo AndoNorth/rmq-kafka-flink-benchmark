@@ -79,7 +79,7 @@ Incrementally scales producers step by step with consumers held fixed. There is 
 | `msg_size_bytes` | Payload size in bytes |
 | `rate_limit` | Messages/sec per producer (`0` = unlimited) |
 
-The runner is responsible for deciding when to stop the ramp. After each `step_duration_seconds` interval it queries Prometheus and checks for: throughput plateau (growth flattens), broker failure (container gone), or error rate spike. These thresholds live in the runner script, not here.
+The runner is responsible for deciding when to stop the ramp. After each `step_duration_seconds` interval it queries Prometheus and evaluates four degradation signals (in order): error rate spike, p99 latency breach, consumer lag accumulation, and throughput regression. The ramp also stops if the broker container disappears. These thresholds live in the runner script, not in the test plan.
 
 ---
 
@@ -91,18 +91,24 @@ startup
       └── wait for Prometheus/Grafana to be healthy
 
 for each test in testplan.json
-  ├── write .env overrides (MSG_SIZE_BYTES, RATE_LIMIT, PRODUCER_SCALE, CONSUMER_SCALE)
-  ├── docker compose up --scale producers=N --scale consumers=M
+  ├── docker compose up --build -d --scale producers=N --scale consumers=M
+  │       MSG_SIZE_BYTES and RATE_LIMIT injected as inline env vars (`.env` is not modified)
   │
   ├── [fixed]  sleep duration_minutes × 60
   │            docker compose down -v
   │            sleep cooldown_seconds
   │
   └── [ramp]   loop:
-                 sleep step_duration_seconds
-                 query Prometheus: throughput, error rate, broker health
-                 if plateau / failure / error spike → break
-                 scale up producers by producer_step
+                 bring_up (N producers, fixed consumers)
+                 sleep step_duration_seconds          ← observation window
+                 query Prometheus snapshot:
+                   throughput, error rate, p99 latency, consume/produce ratio
+                 abort if broker gone
+                 abort if error rate > threshold
+                 abort if p99 latency > threshold
+                 abort if consume/produce ratio < threshold
+                 abort if throughput regression (current < previous)
+                 scale up producers by producer_step, repeat
                docker compose down -v
 
 shutdown (optional --no-teardown flag keeps monitoring up)
@@ -126,7 +132,7 @@ After the run completes, open Grafana at `http://localhost:3000` and use the tim
 
 For **fixed tests**, each window is `duration_minutes` wide with a `cooldown_seconds` gap — the gap appears as a flat zero on the charts, making boundaries easy to find.
 
-For **ramp tests**, look for the throughput curve flattening out — that is the saturation point. The step boundaries are visible as staircase jumps in the `benchmark_messages_produced_total` rate panel.
+For **ramp tests**, the runner stops at the first degradation signal. Step boundaries appear as staircase jumps in the throughput panel. The interesting area is where throughput stops climbing, latency starts rising, or the consume/produce ratio dips — that is the system's true saturation point, visible in the charts even after the runner has stopped.
 
 Key panels to review per test window:
 
@@ -156,7 +162,7 @@ cd testplan
 ./run-benchmark-suite.sh --no-teardown
 
 # Run a single named test only
-./run-benchmark-suite.sh --only A1
+./run-benchmark-suite.sh --only A1_RP
 
 # Dry run — print what would execute without starting containers
 ./run-benchmark-suite.sh --dry-run

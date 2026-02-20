@@ -14,9 +14,10 @@ RABBITMQ_COMPOSE="$REPO_ROOT/docker-compose-rabbitmq.yml"
 
 PROM_URL="http://localhost:9090"
 
-# ── Runner-side saturation thresholds (not in testplan.json) ──────────────────
-PLATEAU_THRESHOLD_PERCENT=5   # ramp stops when throughput growth drops below this
-ERROR_RATE_THRESHOLD="0.05"   # ramp aborts when error rate exceeds this fraction
+# ── Runner-side degradation thresholds (not in testplan.json) ────────────────
+ERROR_RATE_THRESHOLD="0.05"   # abort when produce error rate exceeds this fraction
+LATENCY_P99_THRESHOLD="1.0"  # abort when p99 E2E latency exceeds this (seconds)
+LAG_RATIO_THRESHOLD="0.90"   # abort when consumers handle < this fraction of produced msgs
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 PLAN_FILE="$SCRIPT_DIR/testplan.json"
@@ -162,8 +163,17 @@ current_throughput() {
 }
 
 current_error_rate() {
-    # produced errors as a fraction of total attempted over the last minute
+    # produce errors as a fraction of total attempted over the last minute
     query_prom 'sum(rate(benchmark_produce_errors_total[1m])) / (sum(rate(benchmark_messages_produced_total[1m])) + sum(rate(benchmark_produce_errors_total[1m])))'
+}
+
+current_latency_p99() {
+    query_prom 'histogram_quantile(0.99, sum(rate(benchmark_e2e_latency_seconds_bucket[1m])) by (le))'
+}
+
+consume_to_produce_ratio() {
+    # fraction of produced messages that consumers are keeping up with
+    query_prom 'sum(rate(benchmark_messages_consumed_total[1m])) / sum(rate(benchmark_messages_produced_total[1m]))'
 }
 
 broker_is_healthy() {
@@ -241,23 +251,38 @@ run_ramp_test() {
             break
         fi
 
-        local current_tp error_rate
+        local current_tp error_rate latency_p99 lag_ratio
         current_tp=$(current_throughput)
         error_rate=$(current_error_rate)
-        log "RAMP   $name  throughput=$current_tp msg/s  error_rate=$error_rate"
+        latency_p99=$(current_latency_p99)
+        lag_ratio=$(consume_to_produce_ratio)
+        log "RAMP   $name  throughput=$current_tp msg/s  error_rate=$error_rate  p99=${latency_p99}s  consume/produce=$lag_ratio"
 
+        # Error rate spike
         if (( $(echo "$error_rate > $ERROR_RATE_THRESHOLD" | bc -l) )); then
             log "ABORT  $name  error rate $error_rate exceeded threshold $ERROR_RATE_THRESHOLD at producers=$producers"
             break
         fi
 
+        # Latency breach — system is running but responses are unacceptable
+        if (( $(echo "$latency_p99 > $LATENCY_P99_THRESHOLD" | bc -l) )); then
+            log "ABORT  $name  p99 latency ${latency_p99}s exceeded threshold ${LATENCY_P99_THRESHOLD}s at producers=$producers"
+            break
+        fi
+
+        # Consumer lag — consumers can't drain as fast as producers fill
+        if (( $(echo "$lag_ratio < $LAG_RATIO_THRESHOLD" | bc -l) )); then
+            log "ABORT  $name  consume/produce ratio $lag_ratio below threshold $LAG_RATIO_THRESHOLD at producers=$producers"
+            break
+        fi
+
+        # Throughput regression — adding producers is actively hurting throughput
         if [[ "$previous_tp" != "0" ]]; then
             local growth
             growth=$(echo "scale=4; ($current_tp - $previous_tp) / $previous_tp * 100" | bc -l)
             log "RAMP   $name  throughput_growth=${growth}%"
-
-            if (( $(echo "$growth < $PLATEAU_THRESHOLD_PERCENT" | bc -l) )); then
-                log "PLATEAU $name  growth ${growth}% below ${PLATEAU_THRESHOLD_PERCENT}% threshold — saturated at producers=$producers"
+            if (( $(echo "$growth < 0" | bc -l) )); then
+                log "ABORT  $name  throughput regression ${growth}% at producers=$producers — system overloaded"
                 break
             fi
         fi
