@@ -23,6 +23,28 @@ scrape_configs:
         regex: "container_tasks_state|container_memory_failures_total"
         action: drop
 
+      # On WSL2 (overlayfs snapshotter) cAdvisor uses the containerd factory
+      # which provides an 'image' label but not container_label_com_docker_compose_service.
+      # The rules below derive it from the image name so dashboard queries work
+      # on all systems without modification.
+      #
+      # Locally-built benchmark images are named:
+      #   docker.io/library/<compose-project>-<service>:latest
+      # e.g. docker.io/library/rmq-kafka-flink-benchmark-rabbitmq-producer:latest
+      - source_labels: [image]
+        regex: '.+/rmq-kafka-flink-benchmark-(.+):.+'
+        target_label: container_label_com_docker_compose_service
+        replacement: '$1'
+      # Broker images use their upstream names; match on well-known patterns.
+      - source_labels: [image]
+        regex: '.+/library/rabbitmq:.+'
+        target_label: container_label_com_docker_compose_service
+        replacement: 'rabbitmq'
+      - source_labels: [image]
+        regex: '.+redpandadata/redpanda:.+'
+        target_label: container_label_com_docker_compose_service
+        replacement: 'redpanda'
+
   # ── Redpanda producers ──────────────────────────────────────────────────────
   - job_name: redpanda-producers
     dns_sd_configs:

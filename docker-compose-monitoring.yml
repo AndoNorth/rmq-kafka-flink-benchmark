@@ -1,6 +1,13 @@
 ---
 # Monitoring stack: Prometheus + Grafana.
-# Start this FIRST before running either benchmark stack.
+# Start this FIRST, then pick the cAdvisor variant that matches your system:
+#
+#   Standard Linux (overlay2 storage driver):
+#     docker compose -f docker-compose-cadvisor-standard.yml up -d
+#
+#   WSL2 / containerd snapshotter (overlayfs storage driver):
+#     docker compose -f docker-compose-cadvisor-wsl2.yml up -d
+#
 # The "benchmark" Docker network is created here and referenced by the other
 # compose files so that Prometheus can reach producer/consumer containers.
 #
@@ -28,28 +35,6 @@ services:
       - "--web.enable-lifecycle"
     ports:
       - "9090:9090"
-    networks:
-      - benchmark
-    restart: unless-stopped
-
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.51.0
-    container_name: cadvisor
-    privileged: true
-    ports:
-      - "8083:8080"
-    devices:
-      - /dev/kmsg
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker:/var/lib/docker:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    command:
-      - "--docker=unix:///var/run/docker.sock"
-      - "--docker_only=true"
-      - "--store_container_labels=true"
     networks:
       - benchmark
     restart: unless-stopped

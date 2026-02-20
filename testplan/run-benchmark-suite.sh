@@ -9,8 +9,18 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LOG_FILE="$SCRIPT_DIR/run.log"
 
 MONITORING_COMPOSE="$REPO_ROOT/docker-compose-monitoring.yml"
+CADVISOR_STANDARD_COMPOSE="$REPO_ROOT/docker-compose-cadvisor-standard.yml"
+CADVISOR_WSL2_COMPOSE="$REPO_ROOT/docker-compose-cadvisor-wsl2.yml"
 REDPANDA_COMPOSE="$REPO_ROOT/docker-compose-redpanda.yml"
 RABBITMQ_COMPOSE="$REPO_ROOT/docker-compose-rabbitmq.yml"
+
+# Auto-detect cAdvisor variant based on Docker storage driver
+_driver=$(docker info --format '{{.Driver}}' 2>/dev/null || echo "overlay2")
+if [[ "$_driver" == "overlayfs" ]]; then
+    CADVISOR_COMPOSE="$CADVISOR_WSL2_COMPOSE"
+else
+    CADVISOR_COMPOSE="$CADVISOR_STANDARD_COMPOSE"
+fi
 
 PROM_URL="http://localhost:9090"
 
@@ -95,6 +105,7 @@ services_for() {
 start_monitoring() {
     if $DRY_RUN; then
         log "[dry-run] docker compose -f $MONITORING_COMPOSE up -d"
+        start_cadvisor
         return
     fi
     log "Starting monitoring stack..."
@@ -107,17 +118,37 @@ start_monitoring() {
         sleep 2; (( retries-- ))
     done
     log "Monitoring stack ready."
+    start_cadvisor
+}
+
+start_cadvisor() {
+    if $DRY_RUN; then
+        log "[dry-run] docker compose -f $CADVISOR_COMPOSE up -d  (driver=$_driver)"
+        return
+    fi
+    log "Starting cAdvisor (driver=$_driver, compose=$(basename "$CADVISOR_COMPOSE"))..."
+    docker compose -f "$CADVISOR_COMPOSE" up -d
+}
+
+stop_cadvisor() {
+    if $NO_TEARDOWN; then return; fi
+    if $DRY_RUN; then
+        log "[dry-run] docker compose -f $CADVISOR_COMPOSE down"
+        return
+    fi
+    docker compose -f "$CADVISOR_COMPOSE" down
 }
 
 stop_monitoring() {
     if $NO_TEARDOWN; then
-        log "Monitoring stack left running (--no-teardown)."
+        log "Monitoring stack and cAdvisor left running (--no-teardown)."
         return
     fi
     if $DRY_RUN; then
         log "[dry-run] docker compose -f $MONITORING_COMPOSE down"
         return
     fi
+    stop_cadvisor
     log "Stopping monitoring stack..."
     docker compose -f "$MONITORING_COMPOSE" down
 }
@@ -300,6 +331,7 @@ run_ramp_test() {
 cleanup() {
     log "Caught signal — tearing down all stacks..."
     tear_down_all
+    stop_cadvisor
     stop_monitoring
     exit 1
 }

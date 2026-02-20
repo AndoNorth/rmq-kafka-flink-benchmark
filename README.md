@@ -57,11 +57,19 @@ Derived Grafana panels compute:
 
 ### 1. Start the monitoring stack
 
-The monitoring stack creates the shared Docker network. Start it first.
+The monitoring stack creates the shared Docker network. Start it first, then start cAdvisor (auto-selects the correct variant for your Docker storage driver).
 
 ```bash
 docker compose -f docker-compose-monitoring.yml up -d
+
+# Standard Linux (overlay2 driver):
+docker compose -f docker-compose-cadvisor-standard.yml up -d
+
+# WSL2 / Docker with containerd snapshotter (overlayfs driver):
+docker compose -f docker-compose-cadvisor-wsl2.yml up -d
 ```
+
+Check which driver you have: `docker info --format '{{.Driver}}'`
 
 Open Grafana: http://localhost:3000 (credentials: `admin` / `admin`)
 Open Prometheus: http://localhost:9090
@@ -160,6 +168,7 @@ curl -X POST http://localhost:9090/-/reload
 # Stop everything
 docker-compose -f docker-compose-redpanda.yml down
 docker-compose -f docker-compose-rabbitmq.yml down
+docker-compose -f docker-compose-cadvisor-standard.yml down   # or cadvisor-wsl2
 docker-compose -f docker-compose-monitoring.yml down
 ```
 
@@ -194,6 +203,12 @@ docker-compose -f docker-compose-monitoring.yml down
 ├── docker-compose-redpanda.yml
 ├── docker-compose-rabbitmq.yml
 ├── docker-compose-monitoring.yml
+├── docker-compose-cadvisor-standard.yml  cAdvisor for overlay2 (standard Linux)
+├── docker-compose-cadvisor-wsl2.yml      cAdvisor for overlayfs (WSL2 / containerd snapshotter)
+├── testplan/                   Automated test suite
+│   ├── testplan.json           Default test plan
+│   ├── run-benchmark-suite.sh  Runner (auto-selects cAdvisor variant)
+│   └── README.md
 └── .env                        Shared configuration
 ```
 

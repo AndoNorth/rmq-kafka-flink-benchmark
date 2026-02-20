@@ -88,7 +88,9 @@ The runner is responsible for deciding when to stop the ramp. After each `step_d
 ```
 startup
   └── docker compose -f docker-compose-monitoring.yml up -d
-      └── wait for Prometheus/Grafana to be healthy
+      └── wait for Prometheus to be healthy
+      └── docker compose -f docker-compose-cadvisor-{standard,wsl2}.yml up -d
+              (variant auto-selected from `docker info --format '{{.Driver}}'`)
 
 for each test in testplan.json
   ├── docker compose up --build -d --scale producers=N --scale consumers=M
@@ -111,7 +113,8 @@ for each test in testplan.json
                  scale up producers by producer_step, repeat
                docker compose down -v
 
-shutdown (optional --no-teardown flag keeps monitoring up)
+shutdown (optional --no-teardown flag keeps monitoring and cAdvisor up)
+  └── docker compose -f docker-compose-cadvisor-{variant}.yml down
   └── docker compose -f docker-compose-monitoring.yml down
 ```
 
