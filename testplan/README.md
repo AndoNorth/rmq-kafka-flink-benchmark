@@ -1,0 +1,189 @@
+# Benchmark Test Plan
+
+This directory defines the test plan and runner for the PoC benchmark suite. The runner executes a sequence of test cases against the Redpanda or RabbitMQ stacks, with predictable time windows that allow Grafana to be reviewed manually after the run completes.
+
+## Directory structure
+
+```
+testplan/
+├── README.md               # this file
+├── testplan.json           # default test plan (authoritative format)
+├── run-benchmark-suite.sh  # test runner script
+```
+
+---
+
+## Test plan format
+
+The test plan is a JSON file with a top-level `tests` array. Each entry is either a **fixed** test or a **ramp** test, distinguished by the `type` field.
+
+### Fixed test
+
+Runs a static topology for a set duration, then tears down and waits for a cooldown before the next test.
+
+```json
+{
+  "name": "A1_RP",
+  "type": "fixed",
+  "broker": "redpanda",
+  "producers": 1,
+  "consumers": 1,
+  "msg_size_bytes": 256,
+  "rate_limit": 0,
+  "duration_minutes": 15,
+  "cooldown_seconds": 60
+}
+```
+
+| Field | Description |
+|---|---|
+| `name` | Short label used in logs and Grafana annotations. Must be unique. |
+| `type` | `"fixed"` |
+| `broker` | `"redpanda"` or `"rabbitmq"` |
+| `producers` | Number of producer replicas to scale |
+| `consumers` | Number of consumer replicas to scale |
+| `msg_size_bytes` | Payload size in bytes — maps to `MSG_SIZE_BYTES` in `.env` |
+| `rate_limit` | Messages/sec per producer (`0` = unlimited) — maps to `RATE_LIMIT` |
+| `duration_minutes` | How long to hold the topology before tearing down |
+| `cooldown_seconds` | Downtime between this test and the next (default: `60`) |
+
+### Ramp test
+
+Incrementally scales producers step by step with consumers held fixed. There is no fixed duration — the runner evaluates termination after each step by querying Prometheus. Saturation detection thresholds and failure conditions are configured in the runner, not the test plan.
+
+```json
+{
+  "name": "RAMP_RP",
+  "type": "ramp",
+  "broker": "redpanda",
+  "consumers": 4,
+  "initial_producers": 1,
+  "max_producers": 64,
+  "producer_step": 2,
+  "step_duration_seconds": 180,
+  "msg_size_bytes": 256,
+  "rate_limit": 0
+}
+```
+
+| Field | Description |
+|---|---|
+| `name` | Short label used in logs. Must be unique. |
+| `type` | `"ramp"` |
+| `broker` | `"redpanda"` or `"rabbitmq"` |
+| `consumers` | Fixed number of consumer replicas held constant throughout the ramp |
+| `initial_producers` | Number of producers to start with |
+| `max_producers` | Hard upper bound — ramp stops here regardless of saturation state |
+| `producer_step` | How many producers to add at each step |
+| `step_duration_seconds` | Seconds to hold each step before the runner queries Prometheus |
+| `msg_size_bytes` | Payload size in bytes |
+| `rate_limit` | Messages/sec per producer (`0` = unlimited) |
+
+The runner is responsible for deciding when to stop the ramp. After each `step_duration_seconds` interval it queries Prometheus and checks for: throughput plateau (growth flattens), broker failure (container gone), or error rate spike. These thresholds live in the runner script, not here.
+
+---
+
+## How the runner works
+
+```
+startup
+  └── docker compose -f docker-compose-monitoring.yml up -d
+      └── wait for Prometheus/Grafana to be healthy
+
+for each test in testplan.json
+  ├── write .env overrides (MSG_SIZE_BYTES, RATE_LIMIT, PRODUCER_SCALE, CONSUMER_SCALE)
+  ├── docker compose up --scale producers=N --scale consumers=M
+  │
+  ├── [fixed]  sleep duration_minutes × 60
+  │            docker compose down -v
+  │            sleep cooldown_seconds
+  │
+  └── [ramp]   loop:
+                 sleep step_duration_seconds
+                 query Prometheus: throughput, error rate, broker health
+                 if plateau / failure / error spike → break
+                 scale up producers by producer_step
+               docker compose down -v
+
+shutdown (optional --no-teardown flag keeps monitoring up)
+  └── docker compose -f docker-compose-monitoring.yml down
+```
+
+The runner logs a timestamped entry to `run.log` at the start and end of every test, giving you exact time windows to use in Grafana.
+
+---
+
+## Grafana observation guide
+
+After the run completes, open Grafana at `http://localhost:3000` and use the time picker to zoom into each test window. The `run.log` file (written alongside `run-benchmark-suite.sh`) contains the exact start/end timestamps:
+
+```
+2026-02-20T10:00:00Z  START  A1_RP   redpanda  producers=2 consumers=2 msg_size=256 rate=0
+2026-02-20T10:15:00Z  END    A1_RP
+2026-02-20T10:16:00Z  START  A1_RMQ  rabbitmq  producers=2 consumers=2 msg_size=256 rate=0
+...
+```
+
+For **fixed tests**, each window is `duration_minutes` wide with a `cooldown_seconds` gap — the gap appears as a flat zero on the charts, making boundaries easy to find.
+
+For **ramp tests**, look for the throughput curve flattening out — that is the saturation point. The step boundaries are visible as staircase jumps in the `benchmark_messages_produced_total` rate panel.
+
+Key panels to review per test window:
+
+| Panel | What to look for |
+|---|---|
+| Throughput (msg/s) | Absolute rate, compare brokers side by side |
+| E2E latency (p50/p99) | Latency under load, especially at saturation |
+| Produce ack latency | Producer-side backpressure signal |
+| Broker CPU / Memory | Whether the broker or the clients are the bottleneck |
+| Consumer lag | Whether consumers keep up with producers |
+
+---
+
+## Running the suite
+
+```bash
+# From the repo root:
+cd testplan
+
+# Run the full default plan
+./run-benchmark-suite.sh
+
+# Run with a custom plan file
+./run-benchmark-suite.sh --plan my-testplan.json
+
+# Keep monitoring stack running after the suite finishes (recommended)
+./run-benchmark-suite.sh --no-teardown
+
+# Run a single named test only
+./run-benchmark-suite.sh --only A1
+
+# Dry run — print what would execute without starting containers
+./run-benchmark-suite.sh --dry-run
+```
+
+Logs are written to `testplan/run.log` and appended on each invocation.
+
+---
+
+## Adding or modifying tests
+
+1. Copy an existing entry in `testplan.json` and change the `name` and parameters.
+2. Keep names short and unique — they appear in log lines and are useful as Grafana search terms.
+3. Use the naming convention below: group letter + number + `_RP`/`_RMQ` suffix. e.g. `A1_RP`, `B1_RMQ`, `RAMP_RP`.
+4. Resource limits (CPU/memory caps on broker and client containers) come from `.env` and are **not** overridden per test — edit `.env` before the run if you want to change them, then document which `.env` was in effect in your notes.
+
+---
+
+## Naming convention
+
+Names follow the pattern `<GROUP><N>_<BROKER>` (e.g. `A1_RP`, `B1_RMQ`). Broker suffix is always `_RP` (Redpanda) or `_RMQ` (RabbitMQ). `RAMP_*` tests omit the number.
+
+| Group | Meaning |
+|---|---|
+| `A*` | Symmetric — equal producers and consumers |
+| `B*` | Fan-in — more producers than consumers |
+| `C*` | Fan-out — more consumers than producers |
+| `SIZE*` | Variable message size (baseline topology) |
+| `RATE*` | Rate-limited (baseline topology) |
+| `RAMP_*` | Horizontal producer ramp, fixed consumers |

@@ -1,0 +1,27 @@
+{
+  "tests": [
+    { "name": "A1_RP",       "type": "fixed", "broker": "redpanda",  "producers": 2, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "A1_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 2, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "B1_RP",       "type": "fixed", "broker": "redpanda",  "producers": 8, "consumers": 1, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "B1_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 8, "consumers": 1, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "C1_RP",       "type": "fixed", "broker": "redpanda",  "producers": 1, "consumers": 4, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "C1_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 1, "consumers": 4, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "SIZE10K_RP",  "type": "fixed", "broker": "redpanda",  "producers": 2, "consumers": 2, "msg_size_bytes": 10000, "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "SIZE10K_RMQ", "type": "fixed", "broker": "rabbitmq",  "producers": 2, "consumers": 2, "msg_size_bytes": 10000, "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "RATE1K_RP",   "type": "fixed", "broker": "redpanda",  "producers": 2, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 1000, "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "RATE1K_RMQ",  "type": "fixed", "broker": "rabbitmq",  "producers": 2, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 1000, "duration_minutes": 15, "cooldown_seconds": 60 },
+
+    {
+      "name": "RAMP_RP",
+      "type": "ramp",
+      "broker": "redpanda",
+      "consumers": 4,
+      "initial_producers": 1,
+      "max_producers": 64,
+      "producer_step": 2,
+      "step_duration_seconds": 180,
+      "msg_size_bytes": 256,
+      "rate_limit": 0
+    }
+  ]
+}
