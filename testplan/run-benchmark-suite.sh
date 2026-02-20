@@ -238,7 +238,7 @@ run_ramp_test() {
         if $DRY_RUN; then
             log "[dry-run] sleep $step_duration  then evaluate saturation"
             producers=$(( producers + producer_step ))
-            (( step++ ))
+            step=$(( step + 1 ))
             continue
         fi
 
@@ -289,7 +289,7 @@ run_ramp_test() {
 
         previous_tp=$current_tp
         producers=$(( producers + producer_step ))
-        (( step++ ))
+        step=$(( step + 1 ))
     done
 
     tear_down "$compose_file"

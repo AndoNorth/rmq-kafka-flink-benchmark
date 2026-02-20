@@ -2,26 +2,84 @@
   "tests": [
     { "name": "A1_RP",       "type": "fixed", "broker": "redpanda",  "producers": 2, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
     { "name": "A1_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 2, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
-    { "name": "B1_RP",       "type": "fixed", "broker": "redpanda",  "producers": 8, "consumers": 1, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
-    { "name": "B1_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 8, "consumers": 1, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
-    { "name": "C1_RP",       "type": "fixed", "broker": "redpanda",  "producers": 1, "consumers": 4, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
-    { "name": "C1_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 1, "consumers": 4, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "A2_RP",       "type": "fixed", "broker": "redpanda",  "producers": 4, "consumers": 4, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "A2_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 4, "consumers": 4, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "A3_RP",       "type": "fixed", "broker": "redpanda",  "producers": 8, "consumers": 8, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "A3_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 8, "consumers": 8, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+
+    { "name": "B1_RP",       "type": "fixed", "broker": "redpanda",  "producers": 2, "consumers": 1, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "B1_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 2, "consumers": 1, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "B2_RP",       "type": "fixed", "broker": "redpanda",  "producers": 4, "consumers": 1, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "B2_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 4, "consumers": 1, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "B3_RP",       "type": "fixed", "broker": "redpanda",  "producers": 8, "consumers": 1, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "B3_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 8, "consumers": 1, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+
+    { "name": "C1_RP",       "type": "fixed", "broker": "redpanda",  "producers": 1, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "C1_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 1, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "C2_RP",       "type": "fixed", "broker": "redpanda",  "producers": 1, "consumers": 4, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "C2_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 1, "consumers": 4, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "C3_RP",       "type": "fixed", "broker": "redpanda",  "producers": 1, "consumers": 8, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "C3_RMQ",      "type": "fixed", "broker": "rabbitmq",  "producers": 1, "consumers": 8, "msg_size_bytes": 256,   "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+
+    { "name": "SIZE1K_RP",  "type": "fixed", "broker": "redpanda",  "producers": 2, "consumers": 2, "msg_size_bytes": 1000, "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "SIZE1K_RMQ", "type": "fixed", "broker": "rabbitmq",  "producers": 2, "consumers": 2, "msg_size_bytes": 1000, "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
     { "name": "SIZE10K_RP",  "type": "fixed", "broker": "redpanda",  "producers": 2, "consumers": 2, "msg_size_bytes": 10000, "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
     { "name": "SIZE10K_RMQ", "type": "fixed", "broker": "rabbitmq",  "producers": 2, "consumers": 2, "msg_size_bytes": 10000, "rate_limit": 0,    "duration_minutes": 15, "cooldown_seconds": 60 },
+
     { "name": "RATE1K_RP",   "type": "fixed", "broker": "redpanda",  "producers": 2, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 1000, "duration_minutes": 15, "cooldown_seconds": 60 },
     { "name": "RATE1K_RMQ",  "type": "fixed", "broker": "rabbitmq",  "producers": 2, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 1000, "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "RATE5K_RP",   "type": "fixed", "broker": "redpanda",  "producers": 2, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 5000, "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "RATE5K_RMQ",  "type": "fixed", "broker": "rabbitmq",  "producers": 2, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 5000, "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "RATE10K_RP",   "type": "fixed", "broker": "redpanda",  "producers": 2, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 10000, "duration_minutes": 15, "cooldown_seconds": 60 },
+    { "name": "RATE10K_RMQ",  "type": "fixed", "broker": "rabbitmq",  "producers": 2, "consumers": 2, "msg_size_bytes": 256,   "rate_limit": 10000, "duration_minutes": 15, "cooldown_seconds": 60 },
+
+    {
+      "name": "SOAK_RP",
+      "type": "fixed",
+      "broker": "redpanda",
+      "producers": 4,
+      "consumers": 4,
+      "msg_size_bytes": 256,
+      "rate_limit": 0,
+      "duration_minutes": 60,
+      "cooldown_seconds": 120
+    },
+    {
+      "name": "SOAK_RMQ",
+      "type": "fixed",
+      "broker": "rabbitmq",
+      "producers": 4,
+      "consumers": 4,
+      "msg_size_bytes": 256,
+      "rate_limit": 0,
+      "duration_minutes": 60,
+      "cooldown_seconds": 120
+    },
 
     {
       "name": "RAMP_RP",
       "type": "ramp",
       "broker": "redpanda",
       "consumers": 4,
-      "initial_producers": 1,
+      "initial_producers": 2,
       "max_producers": 64,
       "producer_step": 2,
-      "step_duration_seconds": 180,
+      "step_duration_seconds": 120,
+      "msg_size_bytes": 256,
+      "rate_limit": 0
+    },
+    {
+      "name": "RAMP_RMQ",
+      "type": "ramp",
+      "broker": "rabbitmq",
+      "consumers": 4,
+      "initial_producers": 2,
+      "max_producers": 64,
+      "producer_step": 2,
+      "step_duration_seconds": 120,
       "msg_size_bytes": 256,
       "rate_limit": 0
     }
+
   ]
 }
