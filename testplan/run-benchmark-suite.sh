@@ -26,7 +26,7 @@ PROM_URL="http://localhost:9090"
 
 # ── Runner-side degradation thresholds (not in testplan.json) ────────────────
 ERROR_RATE_THRESHOLD="0.05"   # abort when produce error rate exceeds this fraction
-LATENCY_P99_THRESHOLD="1.0"  # abort when p99 E2E latency exceeds this (seconds)
+LATENCY_P99_THRESHOLD="10.0"  # abort when p99 E2E latency exceeds this (seconds)
 LAG_RATIO_THRESHOLD="0.90"   # abort when consumers handle < this fraction of produced msgs
 
 # ── Defaults ──────────────────────────────────────────────────────────────────

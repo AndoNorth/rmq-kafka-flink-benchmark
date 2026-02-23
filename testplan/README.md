@@ -9,6 +9,8 @@ testplan/
 ├── README.md               # this file
 ├── testplan.json           # default test plan (authoritative format)
 ├── run-benchmark-suite.sh  # test runner script
+├── generate_report.py      # report generator (Prometheus + run.log → REPORT.md)
+└── REPORT.md               # generated benchmark report (not committed)
 ```
 
 ---
@@ -172,6 +174,52 @@ cd testplan
 ```
 
 Logs are written to `testplan/run.log` and appended on each invocation.
+
+---
+
+## Generating a report
+
+After the suite finishes, run `generate_report.py` to produce a `REPORT.md` skeleton populated with real metrics from Prometheus. The script cross-correlates the exact test windows from `run.log` with Prometheus range queries, so the numbers reflect what actually ran rather than the testplan parameters.
+
+```bash
+# From the testplan/ directory (uses defaults: testplan.json, run.log, localhost:9090)
+python3 generate_report.py
+
+# Explicit paths / remote Prometheus
+python3 generate_report.py \
+  --testplan testplan.json \
+  --log      run.log \
+  --prom     http://localhost:9090 \
+  --output   REPORT.md
+
+# Skip Prometheus — emit skeleton with placeholder (—) values from log data only
+python3 generate_report.py --no-metrics
+```
+
+**Options**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--testplan FILE` | `testplan.json` | Test plan used to determine group structure and configurations |
+| `--log FILE` | `run.log` | Runner log; the last non-dry-run suite is used for timestamps |
+| `--prom URL` | `http://localhost:9090` | Prometheus base URL |
+| `--output FILE` | `REPORT.md` | Where to write the report (overwritten if it exists) |
+| `--step DURATION` | `60s` | Prometheus range step (e.g. `30s`, `60s`) |
+| `--no-metrics` | — | Skip all Prometheus queries; all metric cells show `—` |
+
+**What gets generated**
+
+The report skeleton contains:
+- Suite start/end timestamps from `run.log`
+- Throughput tables per test group (A/B/C, SIZE, RATE, SOAK)
+- Ramp step tables directly from the `run.log` step results and abort reasons
+- End-to-end latency tables (P50/P95/P99 + produce ack P99) per group
+- Broker, producer, and consumer CPU and memory tables
+- Conclusions and recommendations scaffolding with `_TODO_` placeholders
+
+Each section has a `> _TODO: add observations_` prompt for you to fill in with screenshots and analysis. Re-running the script overwrites the file, so add your notes in a separate document or after the run has completed and Prometheus data is still live.
+
+**Requirements:** Python 3.9+, no external dependencies. Prometheus must be reachable (use `--no-metrics` if it is not).
 
 ---
 
