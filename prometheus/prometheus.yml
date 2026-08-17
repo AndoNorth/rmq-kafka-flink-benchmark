@@ -1,0 +1,90 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+# Prometheus discovers benchmark containers via Docker's internal DNS.
+# Each service name resolves to all container IPs in the "benchmark" network,
+# so scaled instances (--scale redpanda-producer=4) are found automatically.
+#
+# No Docker socket is required — this works on Docker Desktop, Colima, Rancher,
+# OrbStack, and any other Docker runtime.
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # ── Container resource usage (cAdvisor) ─────────────────────────────────────
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "container_tasks_state|container_memory_failures_total"
+        action: drop
+
+      # On WSL2 (overlayfs snapshotter) cAdvisor uses the containerd factory
+      # which provides an 'image' label but not container_label_com_docker_compose_service.
+      # The rules below derive it from the image name so dashboard queries work
+      # on all systems without modification.
+      #
+      # Locally-built benchmark images are named:
+      #   docker.io/library/<compose-project>-<service>:latest
+      # e.g. docker.io/library/rmq-kafka-flink-benchmark-rabbitmq-producer:latest
+      - source_labels: [image]
+        regex: '.+/rmq-kafka-flink-benchmark-(.+):.+'
+        target_label: container_label_com_docker_compose_service
+        replacement: '$1'
+      # Broker images use their upstream names; match on well-known patterns.
+      - source_labels: [image]
+        regex: '.+/library/rabbitmq:.+'
+        target_label: container_label_com_docker_compose_service
+        replacement: 'rabbitmq'
+      - source_labels: [image]
+        regex: '.+redpandadata/redpanda:.+'
+        target_label: container_label_com_docker_compose_service
+        replacement: 'redpanda'
+
+  # ── Redpanda producers ──────────────────────────────────────────────────────
+  - job_name: redpanda-producers
+    dns_sd_configs:
+      - names: ["redpanda-producer"]
+        type: A
+        port: 2112
+        refresh_interval: 10s
+    relabel_configs:
+      - target_label: role
+        replacement: producer
+
+  # ── Redpanda consumers ──────────────────────────────────────────────────────
+  - job_name: redpanda-consumers
+    dns_sd_configs:
+      - names: ["redpanda-consumer"]
+        type: A
+        port: 2112
+        refresh_interval: 10s
+    relabel_configs:
+      - target_label: role
+        replacement: consumer
+
+  # ── RabbitMQ producers ──────────────────────────────────────────────────────
+  - job_name: rabbitmq-producers
+    dns_sd_configs:
+      - names: ["rabbitmq-producer"]
+        type: A
+        port: 2112
+        refresh_interval: 10s
+    relabel_configs:
+      - target_label: role
+        replacement: producer
+
+  # ── RabbitMQ consumers ──────────────────────────────────────────────────────
+  - job_name: rabbitmq-consumers
+    dns_sd_configs:
+      - names: ["rabbitmq-consumer"]
+        type: A
+        port: 2112
+        refresh_interval: 10s
+    relabel_configs:
+      - target_label: role
+        replacement: consumer

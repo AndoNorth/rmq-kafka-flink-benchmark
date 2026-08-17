@@ -1,0 +1,11 @@
+# Go build outputs
+producer/producer
+consumer/consumer
+
+# Go module cache
+vendor/
+
+# Environment overrides (keep .env.example if needed)
+*.local.env
+
+testplan/run.log

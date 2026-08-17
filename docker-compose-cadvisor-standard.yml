@@ -1,0 +1,35 @@
+---
+# cAdvisor for standard Linux with the legacy overlay2 Docker storage driver.
+#
+# Use when: docker info --format '{{.Driver}}' returns "overlay2"
+#
+# Usage:
+#   docker compose -f docker-compose-monitoring.yml up -d
+#   docker compose -f docker-compose-cadvisor-standard.yml up -d
+
+networks:
+  benchmark:
+    external: true
+
+services:
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.51.0
+    container_name: cadvisor
+    privileged: true
+    ports:
+      - "8083:8080"
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - "--docker=unix:///var/run/docker.sock"
+      - "--docker_only=true"
+      - "--store_container_labels=true"
+    networks:
+      - benchmark
+    restart: unless-stopped

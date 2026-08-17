@@ -1,0 +1,49 @@
+---
+# cAdvisor for WSL2 / Docker with the containerd snapshotter (overlayfs driver).
+#
+# Use when: docker info --format '{{.Driver}}' returns "overlayfs"
+# (Docker Desktop on WSL2, or any engine with containerd image store enabled)
+#
+# Version notes — Docker Engine 29.x requires API ≥ 1.44:
+#   v0.47.1 / v0.49.1 — Docker client only supports API ≤ 1.43, cannot talk to
+#                        Docker at all; falls back to raw cgroup metrics (no labels).
+#   v0.51.0 with Docker socket — Docker client OK (API 1.44+) but the new
+#                        'overlayfs' case in identifyBaseLayer looks for the old
+#                        overlay2 path structure which does not exist with the
+#                        containerd snapshotter; every container fails to register.
+#   v0.51.0 with containerd socket only (this config) — Docker factory never
+#                        registers (no socket), containerd factory takes over and
+#                        exposes per-container metrics with 'image' and 'name'
+#                        labels.  Prometheus metric_relabel_configs in
+#                        prometheus.yml derives container_label_com_docker_compose_service
+#                        from the image name so the dashboard queries work unchanged.
+#
+# Usage:
+#   docker compose -f docker-compose-monitoring.yml up -d
+#   docker compose -f docker-compose-cadvisor-wsl2.yml up -d
+
+networks:
+  benchmark:
+    external: true
+
+services:
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.51.0
+    container_name: cadvisor
+    privileged: true
+    ports:
+      - "8083:8080"
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /run/containerd/containerd.sock:/run/containerd/containerd.sock:ro
+    command:
+      - "--containerd=/run/containerd/containerd.sock"
+      - "--containerd-namespace=moby"
+      - "--store_container_labels=true"
+    networks:
+      - benchmark
+    restart: unless-stopped
