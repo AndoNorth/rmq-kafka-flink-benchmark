@@ -179,3 +179,25 @@ Treat Python-producer RabbitMQ latency figures as bounded below by the flush int
 The consumer needs `python-snappy` (pinned in `py-consumer/requirements.txt`) because Go producers (franz-go) compress Redpanda batches with snappy by default.
 Without it the Python consumer crash-loops with `UnsupportedCodecError`.
 The Python producer sends uncompressed batches, so the producer image does not need it.
+
+## Open Questions
+
+- ~~Exact `rstream` super-stream and SAC API at the pinned version.~~
+  Confirmed at `rstream` 1.1.0.
+  The `super-stream` consumer property registers single active consumers per partition, verified with `rabbitmq-streams list_stream_consumers` (see Observed results).
+- Grafana panels were checked via their PromQL against Prometheus only.
+  Visual confirmation in the Grafana UI is pending.
+- `aiokafka` partitioner: its default murmur2 key partitioner differs from franz-go's sticky key partitioner.
+  Partition placement may differ between Go and Python producers.
+  The throughput comparison is unaffected.
+
+## Out of Scope
+
+- `uvloop`, multi-process workers, and a task-per-partition consumer variant.
+- Running the testplan suite against the Python images and a Python vs Go comparison report.
+
+## References
+
+- `producer/` and `consumer/` (Go reference implementation)
+- `CLAUDE.md` (metric table, env vars, RabbitMQ client notes)
+- `docker-compose-redpanda.yml`, `docker-compose-rabbitmq.yml`, `prometheus/prometheus.yml`
