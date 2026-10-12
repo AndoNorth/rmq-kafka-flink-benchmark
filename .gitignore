@@ -9,3 +9,6 @@ vendor/
 *.local.env
 
 testplan/run.log
+
+.venv/
+__pycache__/
