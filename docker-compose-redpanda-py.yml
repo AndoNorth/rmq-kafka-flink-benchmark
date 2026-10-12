@@ -1,0 +1,9 @@
+# Swaps the Go producer/consumer images for the Python ones.
+# Usage: docker compose -f docker-compose-redpanda.yml -f docker-compose-redpanda-py.yml up --build
+services:
+  redpanda-producer:
+    build:
+      context: ./py-producer
+  redpanda-consumer:
+    build:
+      context: ./py-consumer

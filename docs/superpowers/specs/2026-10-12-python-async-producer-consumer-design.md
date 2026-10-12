@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 date: 2026-10-12
 updated: 2026-10-12
 issues: []
@@ -20,7 +20,7 @@ So the port also has to teach: the code should make the Go-to-asyncio mapping ob
 - `py-producer/` and `py-consumer/` behave like `producer/` and `consumer/` for both `BROKER_TYPE=redpanda` and `BROKER_TYPE=rabbitmq`.
 - Same env vars, same JSON message (`id`, `publish_time_ns`, `payload`), same metric names, labels and histogram buckets on port 2112.
 - The existing Grafana dashboard and Prometheus config work unchanged with the Python images.
-- One extra compose file swaps the Python images in for the four producer and consumer services.
+- Two small compose override files (one per broker) swap the Python images in for the producer and consumer services.
 - Code comments explain each asyncio construct by naming its Go or C++ counterpart.
 - A message encoded by Go decodes in Python and the reverse.
 
@@ -39,9 +39,10 @@ So the port also has to teach: the code should make the Go-to-asyncio mapping ob
 Mirrors the Go modules, one directory per role, each with its own `Dockerfile` (`python:3.12-slim`) and `requirements.txt`.
 
 ```
-py-producer/  main.py  message.py  metrics.py  redpanda.py  rabbitmq.py
-py-consumer/  main.py  message.py  metrics.py  redpanda.py  rabbitmq.py
-docker-compose-python.yml
+py-producer/  main.py  env.py  message.py  metrics.py  pacing.py  redpanda.py  rabbitmq.py  tests/
+py-consumer/  main.py  env.py  message.py  metrics.py  redpanda.py  rabbitmq.py  tests/
+docker-compose-redpanda-py.yml
+docker-compose-rabbitmq-py.yml
 ```
 
 Libraries: `aiokafka` (Redpanda), `rstream` (RabbitMQ streams and super-streams), `prometheus_client` (metrics).
@@ -49,9 +50,11 @@ Libraries: `aiokafka` (Redpanda), `rstream` (RabbitMQ streams and super-streams)
 
 ### Compose
 
-`docker-compose-python.yml` overrides only `build.context` for `redpanda-producer`, `redpanda-consumer`, `rabbitmq-producer` and `rabbitmq-consumer`.
-Usage: `docker compose -f docker-compose-redpanda.yml -f docker-compose-python.yml up`.
+`docker-compose-redpanda-py.yml` and `docker-compose-rabbitmq-py.yml` override only `build.context` for that broker's producer and consumer.
+There is one file per broker because a compose override may only mention services its base file defines.
+Usage: `docker compose -f docker-compose-redpanda.yml -f docker-compose-redpanda-py.yml up --build`.
 Service names are unchanged, so Prometheus DNS discovery and the dashboard labels keep working.
+Each `py-*` directory has a `.dockerignore` (`.venv/`, `__pycache__/`, `tests/`) to keep the build context small.
 
 ### asyncio for a Go and C++ reader
 
@@ -99,7 +102,9 @@ Rate limiting uses a monotonic schedule (`next += 1/rate`, then `await asyncio.s
   Topic creation via the admin client with `PARTITIONS`, tolerating "already exists".
   Metric `producer_id` label from `PRODUCER_ID` or an 8-char uuid, as in Go.
 - **RabbitMQ:** `rstream` super-stream producer with a hash routing key taken from `id`, publish-confirm callback for metrics.
-  The Go `sendTimes` and `msgBytes` maps guarded by a mutex become plain dicts with no lock (see the table).
+  The Go `sendTimes` and `msgBytes` maps guarded by a mutex are replaced by per-message closures, so there is no shared state at all.
+  An in-flight semaphore (`MAX_IN_FLIGHT`) bounds unconfirmed messages, which keeps memory flat at `RATE_LIMIT=0`.
+  Pacing lives in the `pacing.py` module (injectable clock), shared by both producers.
   Declare the super stream with `PARTITIONS` partitions.
   Retry the initial connect in a loop (`await asyncio.sleep(3)`), as the Go client needs.
 
@@ -136,12 +141,48 @@ For each broker: start the stack with the override, then check:
 | SIGTERM | clean exit, no traceback |
 | Go producer with Python consumer, and the reverse | messages decode, latency is sane |
 
-Observed results get appended here after the run.
+### Observed results
+
+Run on 2026-10-12 (WSL2, default `.env`: `PARTITIONS=4`, broker 2 CPU, producer and consumer 0.5 CPU / 256M).
+Grafana was not opened in a browser.
+Its panel queries were run against Prometheus (`localhost:9090`) instead, and all three families (throughput, ack latency p99, E2E latency p99) returned data for both brokers.
+
+- **Redpanda, Python producer and consumer:** started cleanly, no tracebacks, produced and consumed counters both grow, `consume_errors` and `produce_errors` stay 0.
+- **Redpanda scaled (2 and 2):** two `consumer_id` series, each about 10.2k msg/s, partitions split 2 and 2 (`Setting newly assigned partitions` in each consumer log).
+- **RabbitMQ, Python producer and consumer:** same, `consume_errors` 0.
+  `rabbitmq-streams list_stream_consumers` shows `single-active-consumer: true` and `super-stream: benchmark` properties.
+  With two consumers each partition has exactly one `single_active` and one `waiting` subscription, split 2 and 2 across the two connections.
+  So the `super-stream` property key is accepted and SAC works.
+- **Mixed languages:** Go producer with Python consumer and Python producer with Go consumer both decode with `consume_errors` 0, for both brokers.
+  Redpanda E2E averaged about 1 ms (Go producer, Python consumer) and 0.6 ms (Python producer, Go consumer) at `RATE_LIMIT=1000`.
+  RabbitMQ E2E averaged about 53 ms (Go producer, Python consumer) and about 258 ms (Python producer, Go consumer).
+- **SIGTERM:** `docker compose stop` exits every Python container with code 0 in under 2 s and logs `producer exited` / `consumer exited`.
+  Checked at `RATE_LIMIT=0` and `RATE_LIMIT=10` for both brokers, and at 2 and 2 instances.
+- **Memory at `RATE_LIMIT=0`:** producers stay around 32 MiB (Redpanda) and 57-60 MiB (RabbitMQ), consumers 26-31 MiB, all far below 256M.
+- **`MSG_SIZE_BYTES=0`:** producer and consumer run on both brokers, `consume_errors` 0 (about 96 bytes per message, the JSON envelope).
+- **Broker down and up (`RATE_LIMIT=1000`):** no container restarts (`RestartCount` 0) and production and consumption resume after the broker returns.
+  Redpanda: `aiokafka` retries internally and logs about ten `NodeNotReadyError` lines per second while the broker is down.
+  RabbitMQ: while the broker container is stopped its DNS name does not resolve, so `rstream` logs `gaierror` tracebacks from its recovery loop at 10 s intervals.
+  It reconnected on its own after the broker was back, about 990 msg/s on both sides.
+
+Throughput and ack latency at `RATE_LIMIT=0`, one producer, measured over 30 s (no tuning):
+
+| Broker | Produced msg/s | Mean ack latency |
+|---|---|---|
+| Redpanda (`aiokafka`) | 11.6k | 2.4 ms |
+| RabbitMQ (`rstream`) | 8.5k | 816 ms |
+
+`rstream` flushes buffered publishes on a 0.5 s timer, so the RabbitMQ ack latency (and the E2E latency with a Python producer, about 258 ms at 1000 msg/s) is dominated by that interval, not by the broker.
+Treat Python-producer RabbitMQ latency figures as bounded below by it.
+
+Bug found and fixed during the run: the Go producer (franz-go) compresses batches with snappy by default, and the Python consumer crashed with `UnsupportedCodecError` (crash loop) when reading them.
+`python-snappy` was added to `py-consumer/requirements.txt`.
+The Python producer sends uncompressed batches, so the producer image does not need it.
 
 ## Open Questions
 
-- Exact `rstream` super-stream and SAC API at the pinned version: confirm during implementation. If a Go feature has no equivalent, document the gap here instead of approximating it silently.
-- `aiokafka` partitioner: its default murmur2 key partitioner differs from franz-go's sticky key partitioner. Partition placement may differ between Go and Python producers, throughput comparison is unaffected.
+- ~~Exact `rstream` super-stream and SAC API at the pinned version.~~ Confirmed at `rstream` 1.1.0. The `super-stream` consumer property registers single active consumers per partition, verified with `rabbitmq-streams list_stream_consumers` (see Observed results).
+- `aiokafka` partitioner (not revisited, unchanged): its default murmur2 key partitioner differs from franz-go's sticky key partitioner. Partition placement may differ between Go and Python producers, throughput comparison is unaffected.
 
 ## Out of Scope
 

@@ -1,3 +1,5 @@
 aiokafka==0.14.0
 rstream==1.1.0
 prometheus_client==0.26.0
+# The Go producer (franz-go) compresses batches with snappy by default.
+python-snappy==0.7.3
