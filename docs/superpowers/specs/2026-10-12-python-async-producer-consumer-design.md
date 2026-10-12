@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 date: 2026-10-12
 updated: 2026-10-12
 issues: []
@@ -19,7 +19,8 @@ So the port also has to teach: the code should make the Go-to-asyncio mapping ob
 
 - `py-producer/` and `py-consumer/` behave like `producer/` and `consumer/` for both `BROKER_TYPE=redpanda` and `BROKER_TYPE=rabbitmq`.
 - Same env vars, same JSON message (`id`, `publish_time_ns`, `payload`), same metric names, labels and histogram buckets on port 2112.
-- The existing Grafana dashboard and Prometheus config work unchanged with the Python images.
+- The existing Grafana dashboard works unchanged with the Python images.
+- Prometheus needs one extra cAdvisor relabel rule so the Python image names map to the same service labels.
 - Two small compose override files (one per broker) swap the Python images in for the producer and consumer services.
 - Code comments explain each asyncio construct by naming its Go or C++ counterpart.
 - A message encoded by Go decodes in Python and the reverse.
@@ -27,7 +28,7 @@ So the port also has to teach: the code should make the Go-to-asyncio mapping ob
 ## Non-Goals
 
 - No performance tuning (`uvloop`, multi-process, threads).
-- No changes to the Go code, broker compose files, Prometheus or Grafana.
+- No changes to the Go code, the broker compose files or Grafana.
 - No Flink restoration.
 - No in-process consumer worker pool.
   One process consumes whatever the broker assigns it, as the Go consumer does today.
@@ -144,11 +145,15 @@ For each broker: start the stack with the override, then check:
 ### Observed results
 
 Run on 2026-10-12 (WSL2, default `.env`: `PARTITIONS=4`, broker 2 CPU, producer and consumer 0.5 CPU / 256M).
-Grafana was not opened in a browser, so the visual panel check is still pending.
-Its panel queries were run against Prometheus (`localhost:9090`) instead, and all three families (throughput, ack latency p99, E2E latency p99) returned data for both brokers.
+The panel queries were run against Prometheus (`localhost:9090`), and all three families (throughput, ack latency p99, E2E latency p99) returned data for both brokers.
+The author then opened the Grafana dashboard against the Redpanda stack with the Python images, and the panels populated.
+The RabbitMQ stack was not viewed in Grafana.
 
 - **Redpanda, Python producer and consumer:** started cleanly, no tracebacks, produced and consumed counters both grow, `consume_errors` and `produce_errors` stay 0.
 - **Redpanda scaled (2 and 2):** two `consumer_id` series, each about 10.2k msg/s, partitions split 2 and 2 (`Setting newly assigned partitions` in each consumer log).
+- **Redpanda scaled (2 producers and 4 consumers, `RATE_LIMIT=0`):** each producer about 10.2k msg/s, each consumer about 5.1k msg/s (one partition each), `consume_errors` 0.
+  Both producers spread across all 4 partitions (end offsets within about 0.2 percent of each other).
+  Group lag grew to about 82k, so 4 Python consumers at 0.5 CPU only roughly matched 2 max-rate producers.
 - **RabbitMQ, Python producer and consumer:** same, `consume_errors` 0.
   `rabbitmq-streams list_stream_consumers` shows `single-active-consumer: true` and `super-stream: benchmark` properties.
   With two consumers each partition has exactly one `single_active` and one `waiting` subscription, split 2 and 2 across the two connections.
@@ -186,8 +191,9 @@ The Python producer needs it to send snappy batches.
 - ~~Exact `rstream` super-stream and SAC API at the pinned version.~~
   Confirmed at `rstream` 1.1.0.
   The `super-stream` consumer property registers single active consumers per partition, verified with `rabbitmq-streams list_stream_consumers` (see Observed results).
-- Grafana panels were checked via their PromQL against Prometheus only.
-  Visual confirmation in the Grafana UI is pending.
+- ~~Grafana panels were checked via their PromQL against Prometheus only.~~
+  The author confirmed the Redpanda panels visually in Grafana.
+  The RabbitMQ dashboard has not been viewed.
 - ~~`aiokafka` partitioner: does its default murmur2 key partitioner differ from franz-go's?~~
   No: franz-go's `StickyKeyPartitioner(nil)` hashes keyed records with Kafka-compatible murmur2, so placement should be identical (per franz-go docs, not tested).
 
