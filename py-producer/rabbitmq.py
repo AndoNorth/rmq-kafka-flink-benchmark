@@ -85,9 +85,13 @@ async def run(stop: asyncio.Event) -> None:
 
         return on_confirm
 
+    # rstream buffers send() and flushes on a hard-coded 0.5 s timer (producer.py _timer),
+    # so ack and E2E latency include up to 500 ms of client batching; there is no knob.
     try:
         while not stop.is_set():
             await pacer.wait()
+            # ponytail: a down broker parks us here so SIGTERM is not observed until confirms
+            # resume; wait on acquire() and stop.wait() together if that matters.
             await in_flight.acquire()
             msg_id = str(uuid.uuid4())
             data = encode(new_message(msg_id, msg_size))

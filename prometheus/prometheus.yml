@@ -35,6 +35,11 @@ scrape_configs:
         regex: '.+/rmq-kafka-flink-benchmark-(.+):.+'
         target_label: container_label_com_docker_compose_service
         replacement: '$1'
+      # Python override images (benchmark-py-<service>:local) carry the service name too.
+      - source_labels: [image]
+        regex: '.+/benchmark-py-(.+):.+'
+        target_label: container_label_com_docker_compose_service
+        replacement: '$1'
       # Broker images use their upstream names; match on well-known patterns.
       - source_labels: [image]
         regex: '.+/library/rabbitmq:.+'

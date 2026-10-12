@@ -10,12 +10,15 @@ This repo contains two benchmarking stacks:
 
 2. **PoC benchmark** — compares Redpanda (Kafka-compatible) and RabbitMQ SuperStreams using Go producers and consumers with Prometheus/Grafana metrics (`docker-compose-redpanda.yml`, `docker-compose-rabbitmq.yml`, `docker-compose-monitoring.yml`, `producer/`, `consumer/`).
 
+3. **Python asyncio port** - `py-producer/` and `py-consumer/` mirror the Go producer and consumer, selected by the overrides `docker-compose-redpanda-py.yml` and `docker-compose-rabbitmq-py.yml` layered on the broker compose files.
+
 the goal of this project is to gather metrics for Throughput msg/s, latency from producer to consumer E2E and finally resource shape CPU and RAM under different stress conditions.
 
 ## Key project conventions
 
 - Go modules live in `producer/` and `consumer/` with separate `go.mod` files. Run `go mod tidy` inside each directory to resolve dependencies.
 - The Dockerfile runs `go mod tidy` at build time (no pre-committed `go.sum`).
+- Python code lives in `py-producer/` and `py-consumer/` (pinned `requirements.txt`, unit tests via `.venv/bin/python -m unittest discover -s tests`). Python images use distinct tags (`benchmark-py-*:local`).
 
 ## PoC benchmark architecture
 

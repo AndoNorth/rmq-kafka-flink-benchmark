@@ -4,6 +4,10 @@ services:
   redpanda-producer:
     build:
       context: ./py-producer
+    # Distinct tag so a later Go run never reuses the Python image.
+    image: benchmark-py-redpanda-producer:local
   redpanda-consumer:
     build:
       context: ./py-consumer
+    # Distinct tag so a later Go run never reuses the Python image.
+    image: benchmark-py-redpanda-consumer:local

@@ -60,7 +60,13 @@ async def run(stop: asyncio.Event) -> None:
 
         return on_ack
 
-    producer = AIOKafkaProducer(bootstrap_servers=brokers)
+    producer = AIOKafkaProducer(
+        bootstrap_servers=brokers,
+        # Match franz-go defaults: idempotent (implies acks=all) and snappy batches,
+        # so ack latency and broker load reflect the same durability as the Go producer.
+        enable_idempotence=True,
+        compression_type="snappy",
+    )
     await producer.start()
     logging.info(
         "redpanda producer started: id=%s topic=%s partitions=%d rateLimit=%d msgSize=%d",
@@ -70,6 +76,8 @@ async def run(stop: asyncio.Event) -> None:
         while not stop.is_set():
             await pacer.wait()
             # Parks here if MAX_IN_FLIGHT messages are unacked (backpressure).
+            # ponytail: a down broker parks us here (and in producer.stop()) so SIGTERM is
+            # not observed until acks resume; wait on acquire() and stop.wait() together if needed.
             await in_flight.acquire()
             msg_id = str(uuid.uuid4())
             data = encode(new_message(msg_id, msg_size))

@@ -16,8 +16,8 @@ def decode(data: bytes) -> Message:
     """Parse a message. Raises ValueError for anything that is not a valid message."""
     try:
         obj = json.loads(data)
-        return Message(id=obj["id"], publish_time_ns=obj["publish_time_ns"], payload=obj["payload"])
-    except (KeyError, TypeError) as e:  # valid JSON of the wrong shape
+        return Message(id=obj["id"], publish_time_ns=int(obj["publish_time_ns"]), payload=obj["payload"])
+    except (KeyError, TypeError) as e:  # valid JSON of the wrong shape (a non-numeric string makes int() raise ValueError)
         raise ValueError(f"bad message shape: {e!r}") from e
 
 

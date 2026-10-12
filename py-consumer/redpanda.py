@@ -3,6 +3,7 @@ import logging
 import uuid
 
 from aiokafka import AIOKafkaConsumer
+from aiokafka.errors import KafkaError
 
 import metrics
 from env import get_env
@@ -36,7 +37,14 @@ async def run(stop: asyncio.Event) -> None:
         # getmany fetches whatever arrived from all assigned partitions (or {} after
         # the timeout), so the loop can re-check `stop` without task cancellation.
         while not stop.is_set():
-            batches = await consumer.getmany(timeout_ms=500)
+            try:
+                batches = await consumer.getmany(timeout_ms=500)
+            except KafkaError as e:
+                # Like Go's fetch-error handling: count it and keep consuming.
+                logging.warning("redpanda: fetch error: %s", e)
+                errors.inc()
+                await asyncio.sleep(1)  # avoid a hot loop on a persistent error
+                continue
             for records in batches.values():
                 for record in records:
                     try:

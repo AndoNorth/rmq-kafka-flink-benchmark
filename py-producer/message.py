@@ -17,6 +17,7 @@ def new_message(id: str, payload_size: int) -> Message:
 
 
 def encode(m: Message) -> bytes:
-    # Compact separators and ASCII escaping reproduce Go's json.Marshal bytes,
-    # so bytes_produced stays comparable between the two implementations.
+    # Matches Go's json.Marshal bytes for this payload (NUL characters, ASCII ids),
+    # so bytes_produced stays comparable. Not a general match: Go writes non-ASCII
+    # as raw UTF-8 and escapes <, > and &, Python does the opposite.
     return json.dumps(asdict(m), separators=(",", ":")).encode()

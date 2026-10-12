@@ -96,7 +96,7 @@ Each broker module exposes `async def run(stop: asyncio.Event)`, the counterpart
 Common loop, per message: optional rate-limit wait, build and JSON-encode `Message`, send, record metrics on ack.
 Rate limiting uses a monotonic schedule (`next += 1/rate`, then `await asyncio.sleep(max(0, next - now))`) so drift does not accumulate.
 
-- **Redpanda:** `AIOKafkaProducer`, key = message id.
+- **Redpanda:** `AIOKafkaProducer` (idempotent, so acks=all, with snappy compression, matching franz-go defaults), key = message id.
   `await producer.send(topic, value, key)` returns once the record is queued and gives a future for the ack.
   A done-callback on that future records `messages_produced`, `bytes_produced` and `produce_ack_latency`, or `produce_errors`.
   Topic creation via the admin client with `PARTITIONS`, tolerating "already exists".
@@ -110,9 +110,9 @@ Rate limiting uses a monotonic schedule (`next += 1/rate`, then `await asyncio.s
 
 ### Consumer
 
-- **Redpanda:** `AIOKafkaConsumer` in group `CONSUMER_GROUP`, offset reset to latest, `async for record in consumer`.
+- **Redpanda:** `AIOKafkaConsumer` in group `CONSUMER_GROUP`, offset reset to latest, polling `getmany(timeout_ms=500)` so the loop can re-check the stop event.
   Per record: decode JSON, increment `messages_consumed` and `bytes_consumed`, observe `e2e_latency` with `time.time_ns() - publish_time_ns`.
-  Decode errors increment `consume_errors`.
+  Decode errors and fetch errors (`KafkaError` from `getmany`) increment `consume_errors`.
 - **RabbitMQ:** `rstream` super-stream consumer with consumer name `benchmark-consumer`, offset next, single active consumer, handler doing the same per-message work.
   Then `await stop.wait()` until shutdown, like `<-ctx.Done()`.
 
@@ -176,9 +176,10 @@ Throughput and ack latency at `RATE_LIMIT=0`, one producer, measured over 30 s (
 The 816 ms mean is well above 0.5 s, so queueing behind the in-flight semaphore at `RATE_LIMIT=0` likely adds to it (not isolated).
 Treat Python-producer RabbitMQ latency figures as bounded below by the flush interval.
 
-The consumer needs `python-snappy` (pinned in `py-consumer/requirements.txt`) because Go producers (franz-go) compress Redpanda batches with snappy by default.
-Without it the Python consumer crash-loops with `UnsupportedCodecError`.
-The Python producer sends uncompressed batches, so the producer image does not need it.
+Both images install `aiokafka[snappy]`, which pulls in `cramjam`, the library `aiokafka` uses to (de)compress snappy, lz4 and zstd.
+The consumer needs it because Go producers (franz-go) compress Redpanda batches with snappy by default.
+Without it the Python consumer fails with `UnsupportedCodecError`.
+The Python producer needs it to send snappy batches.
 
 ## Open Questions
 
@@ -187,9 +188,8 @@ The Python producer sends uncompressed batches, so the producer image does not n
   The `super-stream` consumer property registers single active consumers per partition, verified with `rabbitmq-streams list_stream_consumers` (see Observed results).
 - Grafana panels were checked via their PromQL against Prometheus only.
   Visual confirmation in the Grafana UI is pending.
-- `aiokafka` partitioner: its default murmur2 key partitioner differs from franz-go's sticky key partitioner.
-  Partition placement may differ between Go and Python producers.
-  The throughput comparison is unaffected.
+- ~~`aiokafka` partitioner: does its default murmur2 key partitioner differ from franz-go's?~~
+  No: franz-go's `StickyKeyPartitioner(nil)` hashes keyed records with Kafka-compatible murmur2, so placement should be identical (per franz-go docs, not tested).
 
 ## Out of Scope
 

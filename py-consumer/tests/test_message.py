@@ -24,6 +24,17 @@ class MessageTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             decode(b'{"id":"abc"}')
 
+    def test_bad_string_timestamp_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            decode(b'{"id":"a","publish_time_ns":"x","payload":""}')
+
+    def test_null_timestamp_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            decode(b'{"id":"a","publish_time_ns":null,"payload":""}')
+
+    def test_numeric_string_timestamp_is_accepted(self):
+        self.assertEqual(decode(b'{"id":"a","publish_time_ns":"5","payload":""}').publish_time_ns, 5)
+
     def test_latency_is_seconds_since_publish(self):
         m = Message(id="a", publish_time_ns=time.time_ns() - 2_000_000_000, payload="")
         self.assertAlmostEqual(latency_seconds(m), 2.0, delta=0.1)
