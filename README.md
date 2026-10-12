@@ -172,6 +172,21 @@ docker-compose -f docker-compose-cadvisor-standard.yml down   # or cadvisor-wsl2
 docker-compose -f docker-compose-monitoring.yml down
 ```
 
+## Python implementation (asyncio)
+
+`py-producer/` and `py-consumer/` are asyncio ports of the Go producer and consumer, with the same env vars and metrics.
+They are swapped in with a compose override on top of the normal broker file:
+
+```bash
+docker compose -f docker-compose-redpanda.yml -f docker-compose-redpanda-py.yml up --build
+docker compose -f docker-compose-rabbitmq.yml -f docker-compose-rabbitmq-py.yml up --build
+```
+
+The override builds images tagged `benchmark-py-<broker>-<role>:local`, so a later Go run without the override does not reuse them.
+The Python RabbitMQ producer (`rstream`) flushes sends on a hard-coded 0.5 s timer, so its ack and E2E latency include up to 500 ms of client batching.
+Do not compare that latency with the Go client at face value.
+`docker compose down --remove-orphans` on a broker file also removes the monitoring containers, because they share the same compose project.
+
 ## Project layout
 
 ```
@@ -192,6 +207,9 @@ docker-compose -f docker-compose-monitoring.yml down
 │   ├── metrics.go
 │   ├── go.mod
 │   └── Dockerfile
+├── py-producer/                Python asyncio producer (same env vars and metrics as Go)
+├── py-consumer/                Python asyncio consumer
+├── docker-compose-*-py.yml     Overrides that swap in the Python images
 ├── prometheus/
 │   └── prometheus.yml          Docker SD config — auto-discovers containers
 ├── grafana/

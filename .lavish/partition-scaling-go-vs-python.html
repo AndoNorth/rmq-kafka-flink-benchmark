@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Partition Scaling Explained</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:oklch(20.768% .039 265.754);
+    --surface:oklch(19.314% .037 265.754);
+    --surface-2:oklch(17.86% .034 265.754);
+    --text:oklch(84.153% .007 265.754);
+    --text-muted:color-mix(in oklch, var(--text) 68%, transparent);
+    --text-faint:color-mix(in oklch, var(--text) 48%, transparent);
+    --border:color-mix(in oklch, var(--text) 14%, transparent);
+    --accent:oklch(75.351% .138 232.661);
+    --accent-fg:oklch(15.07% .027 232.661);
+    --ok:oklch(78.452% .132 181.911);
+    --warn:oklch(83.242% .139 82.95);
+    --bad:oklch(71.785% .17 13.118);
+    --info:oklch(68.455% .148 237.251);
+  }
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    padding-inline:16px;
+    padding-block:0 32px;
+    max-width:920px;
+    margin:0 auto;
+    line-height:1.55;
+  }
+  .mono,code,pre{font-family:'IBM Plex Mono',ui-monospace,monospace;}
+  code{font-size:.86em;background:color-mix(in oklch, var(--text) 10%, transparent);padding:.1em .35em;border-radius:.3em;}
+  h1,h2,h3{text-wrap:balance;}
+  h2,h3{margin:0;}
+  p{margin:0 0 10px;}
+  .muted{color:var(--text-muted);font-size:.86rem;}
+
+  .callbar{
+    position:sticky;
+    top:env(safe-area-inset-top,0px);
+    z-index:10;
+    background:var(--surface);
+    border-bottom:1px solid var(--border);
+    margin-inline:-16px;
+    padding:14px 16px 12px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .callbar-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;}
+  .callbar-top h1{font-size:1.1rem;font-weight:700;margin:0;}
+  .callbar-when{font-size:.78rem;color:var(--accent);font-weight:600;}
+  .navpills{display:flex;gap:6px;flex-wrap:wrap;}
+  .navpills a{
+    font-size:.72rem;
+    font-family:'IBM Plex Mono',monospace;
+    color:var(--text-muted);
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:999px;
+    padding:4px 10px;
+    text-decoration:none;
+    white-space:nowrap;
+  }
+  .navpills a:hover{color:var(--text);border-color:var(--accent);}
+  a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  .lede{margin:18px 0 8px;color:var(--text-muted);font-size:.95rem;max-width:70ch;}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;}
+  .chip{font-family:'IBM Plex Mono',monospace;font-size:.72rem;padding:3px 9px;border-radius:999px;border:1px solid var(--border);color:var(--text-muted);font-variant-numeric:tabular-nums;}
+  .chip.branch{color:var(--accent);border-color:color-mix(in oklch, var(--accent) 45%, var(--border));}
+
+  .facts{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+    gap:1px;
+    background:var(--border);
+    border:1px solid var(--border);
+    border-radius:10px;
+    overflow:hidden;
+    margin:14px 0 22px;
+  }
+  .fact{background:var(--surface);padding:10px 12px;}
+  .fact .label{font-size:.66rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);}
+  .fact .value{font-family:'IBM Plex Mono',monospace;font-size:1.05rem;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums;}
+  .fact.ok .value{color:var(--ok);} .fact.warn .value{color:var(--warn);} .fact.bad .value{color:var(--bad);}
+
+  section.card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:18px 20px;
+    margin-bottom:16px;
+    scroll-margin-top:110px;
+  }
+  .card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
+  .card-head h2{font-size:1rem;font-weight:600;}
+  .subhead{font-size:.86rem;font-weight:600;margin:16px 0 8px;}
+  .phase{
+    display:flex;align-items:center;gap:10px;
+    margin:26px 0 10px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.72rem;
+    color:var(--text-muted);
+    text-transform:uppercase;
+    letter-spacing:.06em;
+  }
+  .phase::before,.phase::after{content:"";flex:1;height:1px;background:var(--border);}
+  .phase span{white-space:nowrap;color:var(--accent);}
+
+  .tag{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.68rem;
+    border-radius:999px;
+    padding:2px 9px;
+    white-space:nowrap;
+    background:color-mix(in oklch, var(--accent) 16%, transparent);
+    color:var(--accent);
+  }
+  .tag.ok{background:color-mix(in oklch, var(--ok) 16%, transparent);color:var(--ok);}
+  .tag.warn{background:color-mix(in oklch, var(--warn) 16%, transparent);color:var(--warn);}
+  .tag.bad{background:color-mix(in oklch, var(--bad) 16%, transparent);color:var(--bad);}
+  .tag.info{background:color-mix(in oklch, var(--info) 16%, transparent);color:var(--info);}
+  .tag.ghost{background:color-mix(in oklch, var(--text) 10%, transparent);color:var(--text-muted);}
+
+  blockquote{
+    margin:0 0 10px;
+    background:var(--surface-2);
+    border-left:3px solid var(--accent);
+    border-radius:0 8px 8px 0;
+    padding:12px 14px;
+    font-size:.9rem;
+  }
+
+  ol.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;counter-reset:step;}
+  ol.steps li{counter-increment:step;display:flex;gap:10px;align-items:flex-start;font-size:.9rem;}
+  ol.steps li::before{
+    content:counter(step);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.7rem;
+    color:var(--accent-fg);
+    background:var(--accent);
+    border-radius:5px;
+    padding:1px 7px;
+    flex-shrink:0;
+    margin-top:2px;
+  }
+  ol.steps .sub{color:var(--text-muted);}
+
+  .table-wrap{overflow-x:auto;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;}
+  table{width:100%;border-collapse:collapse;font-size:.82rem;}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top;}
+  tr:last-child td{border-bottom:0;}
+  th{color:var(--text-muted);font-weight:600;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
+  td.mono{font-size:.78rem;}
+  td .refs{margin-top:0;}
+
+  .refs{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+  .btnlink{
+    display:inline-block;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.72rem;
+    color:var(--accent);
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:4px 10px;
+    text-decoration:none;
+    max-width:100%;
+    overflow-wrap:anywhere;
+  }
+  .btnlink:hover{border-color:var(--accent);}
+
+  figure.diagram{margin:0 0 12px;overflow-x:auto;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:14px;}
+  figure.diagram svg{display:block;min-width:560px;width:100%;height:auto;}
+  figure.diagram text{fill:var(--text);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:12px;}
+  figure.diagram text.dim{fill:var(--text-muted);font-size:11px;}
+  figure.diagram text.mono{font-family:'IBM Plex Mono',monospace;font-size:11px;}
+  figure.diagram .node{fill:var(--surface);stroke:var(--border);stroke-width:1.5;}
+  figure.diagram .node.ok{fill:color-mix(in oklch, var(--ok) 14%, var(--surface));stroke:var(--ok);}
+  figure.diagram .node.bad{fill:color-mix(in oklch, var(--bad) 14%, var(--surface));stroke:var(--bad);}
+  figure.diagram .node.warn{fill:color-mix(in oklch, var(--warn) 14%, var(--surface));stroke:var(--warn);}
+  figure.diagram .node.info{fill:color-mix(in oklch, var(--info) 14%, var(--surface));stroke:var(--info);}
+  figure.diagram .node.planned{stroke-dasharray:5 4;}
+  figure.diagram .edge{fill:none;stroke:var(--text-muted);stroke-width:1.6;}
+  figure.diagram .edge.ok{stroke:var(--ok);} figure.diagram .edge.bad{stroke:var(--bad);}
+  figure.diagram .edge.planned{stroke-dasharray:5 4;}
+  figure.diagram figcaption{font-size:.78rem;color:var(--text-muted);margin-top:10px;line-height:1.5;}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:.72rem;color:var(--text-muted);margin-top:8px;}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px;border:1.5px solid currentColor;}
+
+  .two-col{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:10px;}
+  @media (max-width:700px){.two-col{grid-template-columns:minmax(0,1fr);}}
+  .col-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:4px;}
+  pre{margin:0;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;overflow-x:auto;font-size:.78rem;line-height:1.55;}
+  pre code{background:none;padding:0;font-size:1em;}
+  .diff-add{color:var(--ok);} .diff-del{color:var(--bad);}
+
+  details{margin-top:8px;}
+  details summary{cursor:pointer;font-size:.76rem;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;}
+  details .body{font-size:.85rem;color:var(--text-muted);margin-top:8px;}
+
+  .dont{
+    background:color-mix(in oklch, var(--warn) 12%, var(--surface));
+    border:1px solid color-mix(in oklch, var(--warn) 40%, transparent);
+    border-radius:10px;
+    padding:14px 16px;
+    margin-top:6px;
+    font-size:.88rem;
+  }
+  .dont h3{margin:0 0 8px;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--warn);font-weight:600;}
+  .dont ul{margin:0;padding-left:18px;}
+  .dont li{margin-bottom:4px;}
+
+  footer{margin-top:22px;text-align:center;font-size:.72rem;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;overflow-wrap:anywhere;}
+</style>
+</head>
+<body>
+
+<div class="callbar">
+  <div class="callbar-top">
+    <h1>How producers and consumers scale: Go vs Python</h1>
+    <span class="callbar-when mono">Redpanda, 4 partitions, 2026-10-12</span>
+  </div>
+  <div class="navpills">
+    <a href="#answer">answer</a>
+    <a href="#producers">producers</a>
+    <a href="#consumers">consumers</a>
+    <a href="#inside">inside one process</a>
+    <a href="#rabbitmq">rabbitmq</a>
+    <a href="#measured">measured</a>
+    <a href="#try">try it</a>
+  </div>
+</div>
+
+<p class="lede">Yes, the Python consumers run in parallel. The parallelism comes from partitions plus more processes, in both languages. It does not come from threads inside one consumer. Every number below was read from the live Redpanda stack with 2 Python producers and 4 Python consumers.</p>
+
+<div class="chips">
+  <span class="chip branch">explore/python-async-consumers</span>
+  <span class="chip">topic: benchmark</span>
+  <span class="chip">group: benchmark-consumers</span>
+</div>
+
+<div class="facts">
+  <div class="fact"><div class="label">Partitions</div><div class="value">4</div></div>
+  <div class="fact ok"><div class="label">Producers</div><div class="value">2 x 10.2k/s</div></div>
+  <div class="fact ok"><div class="label">Consumers</div><div class="value">4 x 5.1k/s</div></div>
+  <div class="fact warn"><div class="label">Group lag</div><div class="value">82k</div></div>
+  <div class="fact ok"><div class="label">Errors</div><div class="value">0</div></div>
+</div>
+
+<section class="card" id="answer">
+  <div class="card-head"><h2>The one idea</h2><span class="tag info">same in Go and Python</span></div>
+  <blockquote>A topic is cut into partitions. Producers may write to any partition. Each partition is read by exactly one consumer in a group. So the partition count is the ceiling on useful consumers, and the producer count is free.</blockquote>
+  <ol class="steps">
+    <li><span><strong>Producers do not own partitions.</strong> <span class="sub">Each message carries a key (the message uuid). The client hashes the key and picks the partition, so every producer writes to all 4 partitions.</span></span></li>
+    <li><span><strong>Consumers do own partitions.</strong> <span class="sub">The broker hands each partition to one member of the consumer group. Adding a consumer triggers a rebalance that moves some partitions to it.</span></span></li>
+    <li><span><strong>Go and Python differ only inside one process.</strong> <span class="sub">Go can use several cores in one process. Python code in one process uses one core. To use more cores in Python you add processes, which here means containers.</span></span></li>
+  </ol>
+</section>
+
+<div class="phase"><span>producer side</span></div>
+
+<section class="card" id="producers">
+  <div class="card-head"><h2>Producers: any number, all partitions</h2><span class="tag ok">observed</span></div>
+  <p class="muted">Question this answers: if I run 2 producers, does each one get its own partitions? No. Both spread across all 4.</p>
+  <figure class="diagram">
+    <svg viewBox="0 0 600 250" role="img" aria-labelledby="fa-title fa-desc">
+      <title id="fa-title">Two producers writing to four partitions</title>
+      <desc id="fa-desc">Each of two producers has an arrow to every one of the four partitions of the benchmark topic, because the partition is chosen by hashing the message key.</desc>
+      <defs><marker id="arrow-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--text-muted)"/></marker></defs>
+      <text class="dim" x="300" y="16" text-anchor="middle">partition = hash(key) mod 4, key = message uuid</text>
+      <path class="edge" d="M165 75L420 40" marker-end="url(#arrow-a)"/>
+      <path class="edge" d="M165 75L420 100" marker-end="url(#arrow-a)"/>
+      <path class="edge" d="M165 75L420 160" marker-end="url(#arrow-a)"/>
+      <path class="edge" d="M165 75L420 220" marker-end="url(#arrow-a)"/>
+      <path class="edge" d="M165 175L420 40" marker-end="url(#arrow-a)"/>
+      <path class="edge" d="M165 175L420 100" marker-end="url(#arrow-a)"/>
+      <path class="edge" d="M165 175L420 160" marker-end="url(#arrow-a)"/>
+      <path class="edge" d="M165 175L420 220" marker-end="url(#arrow-a)"/>
+      <rect class="node info" x="10" y="50" width="155" height="50" rx="8"/>
+      <text x="87" y="72" text-anchor="middle">producer c99e2aa2</text>
+      <text class="dim" x="87" y="89" text-anchor="middle">about 10.2k msg/s</text>
+      <rect class="node info" x="10" y="150" width="155" height="50" rx="8"/>
+      <text x="87" y="172" text-anchor="middle">producer 996754cf</text>
+      <text class="dim" x="87" y="189" text-anchor="middle">about 10.3k msg/s</text>
+      <rect class="node" x="420" y="22" width="170" height="36" rx="8"/>
+      <text class="mono" x="505" y="44" text-anchor="middle">P0  end 1,211,927</text>
+      <rect class="node" x="420" y="82" width="170" height="36" rx="8"/>
+      <text class="mono" x="505" y="104" text-anchor="middle">P1  end 1,211,005</text>
+      <rect class="node" x="420" y="142" width="170" height="36" rx="8"/>
+      <text class="mono" x="505" y="164" text-anchor="middle">P2  end 1,213,125</text>
+      <rect class="node" x="420" y="202" width="170" height="36" rx="8"/>
+      <text class="mono" x="505" y="224" text-anchor="middle">P3  end 1,212,597</text>
+    </svg>
+    <figcaption>Look at the right-hand column: the four partitions hold almost the same number of messages (within about 0.2 percent). That is only possible if both producers hash across all 4. If each producer owned two partitions, scaling producers would change the balance. Neutral arrows: nothing here is broken or planned.</figcaption>
+  </figure>
+
+  <div class="subhead">Worked example of one message, same steps in both languages</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Step</th><th>Go producer</th><th>Python producer</th></tr></thead>
+    <tbody>
+      <tr><td>1. make a key</td><td class="mono">id := uuid.New().String()</td><td class="mono">msg_id = str(uuid.uuid4())</td></tr>
+      <tr><td>2. pick the partition</td><td>franz-go <code>StickyKeyPartitioner</code> hashes the key (per its docs, Kafka-compatible murmur2)</td><td>aiokafka default partitioner hashes the key with murmur2</td></tr>
+      <tr><td>3. queue the send</td><td><code>Produce(ctx, record, callback)</code> returns at once</td><td><code>await producer.send(...)</code> returns once queued, gives a future</td></tr>
+      <tr><td>4. batch and ship</td><td>client goroutines batch per partition and send on their own threads</td><td>aiokafka background sender task batches per partition on the same event loop</td></tr>
+      <tr><td>5. the ack arrives</td><td>callback runs in a client goroutine</td><td>done-callback runs on the event loop between awaits</td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted">The Go and Python hashing being identical is from franz-go's documentation and was not tested. The even end offsets above show the Python side spreads evenly.</p>
+
+  <div class="two-col">
+    <div><div class="col-label">Go: producer/redpanda.go</div><pre><code>record := &amp;kgo.Record{
+    Key:   []byte(id),
+    Value: data,
+}
+p.client.Produce(ctx, record,
+    func(_ *kgo.Record, err error) {
+        // ack metrics
+    })</code></pre></div>
+    <div><div class="col-label">Python: py-producer/redpanda.py</div><pre><code>fut = await producer.send(
+    topic,
+    value=data,
+    key=msg_id.encode(),
+)
+fut.add_done_callback(
+    make_ack(send_time, len(data)))</code></pre></div>
+  </div>
+  <p class="muted">Scaling producers is the same command in both: <code>--scale redpanda-producer=2</code>. Each container gets a fresh <code>producer_id</code>, so Grafana shows one series per producer.</p>
+</section>
+
+<div class="phase"><span>consumer side</span></div>
+
+<section class="card" id="consumers">
+  <div class="card-head"><h2>Consumers: one per partition, at most</h2><span class="tag ok">observed</span></div>
+  <p class="muted">Question this answers: how do 4 consumers split 4 partitions, and what happens with 1 or 5?</p>
+  <figure class="diagram">
+    <svg viewBox="0 0 600 300" role="img" aria-labelledby="fb-title fb-desc">
+      <title id="fb-title">One consumer versus four consumers on four partitions</title>
+      <desc id="fb-desc">Left: a single consumer owns all four partitions. Right: four consumers own one partition each, and a hypothetical fifth consumer sits idle with no partition.</desc>
+      <defs><marker id="arrow-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--text-muted)"/></marker></defs>
+      <text x="140" y="16" text-anchor="middle">1 consumer (MEMBERS 1)</text>
+      <text x="450" y="16" text-anchor="middle">4 consumers (MEMBERS 4)</text>
+
+      <rect class="node warn" x="10" y="110" width="110" height="46" rx="8"/>
+      <text class="mono" x="65" y="131" text-anchor="middle">d34dc8c0</text>
+      <text class="dim" x="65" y="147" text-anchor="middle">one core</text>
+      <path class="edge" d="M120 133L195 40" marker-end="url(#arrow-b)"/>
+      <path class="edge" d="M120 133L195 100" marker-end="url(#arrow-b)"/>
+      <path class="edge" d="M120 133L195 160" marker-end="url(#arrow-b)"/>
+      <path class="edge" d="M120 133L195 220" marker-end="url(#arrow-b)"/>
+      <rect class="node" x="195" y="26" width="70" height="28" rx="6"/><text class="mono" x="230" y="44" text-anchor="middle">P0</text>
+      <rect class="node" x="195" y="86" width="70" height="28" rx="6"/><text class="mono" x="230" y="104" text-anchor="middle">P1</text>
+      <rect class="node" x="195" y="146" width="70" height="28" rx="6"/><text class="mono" x="230" y="164" text-anchor="middle">P2</text>
+      <rect class="node" x="195" y="206" width="70" height="28" rx="6"/><text class="mono" x="230" y="224" text-anchor="middle">P3</text>
+
+      <rect class="node ok" x="310" y="26" width="120" height="28" rx="6"/><text class="mono" x="370" y="44" text-anchor="middle">d34dc8c0</text>
+      <rect class="node ok" x="310" y="86" width="120" height="28" rx="6"/><text class="mono" x="370" y="104" text-anchor="middle">3528daf9</text>
+      <rect class="node ok" x="310" y="146" width="120" height="28" rx="6"/><text class="mono" x="370" y="164" text-anchor="middle">edfc3a54</text>
+      <rect class="node ok" x="310" y="206" width="120" height="28" rx="6"/><text class="mono" x="370" y="224" text-anchor="middle">72ff40eb</text>
+      <path class="edge ok" d="M430 40H510" marker-end="url(#arrow-b)"/>
+      <path class="edge ok" d="M430 100H510" marker-end="url(#arrow-b)"/>
+      <path class="edge ok" d="M430 160H510" marker-end="url(#arrow-b)"/>
+      <path class="edge ok" d="M430 220H510" marker-end="url(#arrow-b)"/>
+      <rect class="node" x="510" y="26" width="70" height="28" rx="6"/><text class="mono" x="545" y="44" text-anchor="middle">P0</text>
+      <rect class="node" x="510" y="86" width="70" height="28" rx="6"/><text class="mono" x="545" y="104" text-anchor="middle">P1</text>
+      <rect class="node" x="510" y="146" width="70" height="28" rx="6"/><text class="mono" x="545" y="164" text-anchor="middle">P2</text>
+      <rect class="node" x="510" y="206" width="70" height="28" rx="6"/><text class="mono" x="545" y="224" text-anchor="middle">P3</text>
+      <rect class="node planned" x="310" y="262" width="120" height="28" rx="6"/>
+      <text class="dim" x="370" y="280" text-anchor="middle">5th consumer: idle</text>
+    </svg>
+    <figcaption>The ids are the real consumer ids from the run: the first consumer owns P0, and the broker spread the rest in its own order (container 2 got P2, container 3 got P3, container 4 got P1). Amber: one consumer carrying everything. Green: balanced. Dashed: a hypothetical fifth consumer, not run. With only 4 partitions it would get nothing to read.</figcaption>
+    <div class="legend"><span style="color:var(--warn)"><i></i>overloaded</span><span style="color:var(--ok)"><i></i>balanced</span><span>dashed = hypothetical</span></div>
+  </figure>
+
+  <div class="subhead">Worked arithmetic with the real numbers</div>
+  <ol class="steps">
+    <li><span><strong>Into the topic:</strong> <span class="sub">2 producers x about 10.2k msg/s = about 20.5k msg/s.</span></span></li>
+    <li><span><strong>Per partition:</strong> <span class="sub">20.5k / 4 partitions = about 5.1k msg/s arriving on each.</span></span></li>
+    <li><span><strong>Per consumer, 4 consumers:</strong> <span class="sub">each owns one partition, so each must read about 5.1k msg/s. Measured: 5146, 5134, 5113 and 5062 msg/s.</span></span></li>
+    <li><span><strong>Per consumer, if there were only 2:</strong> <span class="sub">each would own 2 partitions and need about 10.2k msg/s. A Python consumer capped at 0.5 CPU is the bottleneck here, so this is where the lag comes from.</span></span></li>
+  </ol>
+
+  <div class="two-col">
+    <div><div class="col-label">Go: consumer/redpanda.go</div><pre><code>fetches := c.client.PollFetches(ctx)
+fetches.EachRecord(func(r *kgo.Record) {
+    msg, err := decodeMessage(r.Value)
+    // metrics
+})</code></pre></div>
+    <div><div class="col-label">Python: py-consumer/redpanda.py</div><pre><code>batches = await consumer.getmany(
+    timeout_ms=500)
+for records in batches.values():
+    for record in records:
+        msg = decode(record.value)
+        # metrics</code></pre></div>
+  </div>
+  <p class="muted">Both join the group <code>benchmark-consumers</code>, so a Go consumer and a Python consumer can share partitions in the same group. Scaling is the same command: <code>--scale redpanda-consumer=4</code>.</p>
+</section>
+
+<div class="phase"><span>what differs</span></div>
+
+<section class="card" id="inside">
+  <div class="card-head"><h2>Inside one process</h2><span class="tag warn">illustrative timing</span></div>
+  <p class="muted">Question this answers: if both languages scale by adding containers, why is one Go consumer expected to do more than one Python consumer?</p>
+  <figure class="diagram">
+    <svg viewBox="0 0 600 250" role="img" aria-labelledby="fd-title fd-desc">
+      <title id="fd-title">One consumer process in Go and in Python over time</title>
+      <desc id="fd-desc">In Go, the client's network goroutines fetch the next batch on another core while your loop decodes the current batch, so the two overlap. In Python everything that touches the data runs on one event loop, one after another, and the loop is only free while it awaits the network.</desc>
+      <text x="10" y="18">Go</text>
+      <text class="dim" x="10" y="52">client goroutines</text>
+      <text class="dim" x="10" y="92">your loop</text>
+      <rect class="node info" x="130" y="38" width="120" height="22" rx="5"/><text class="mono" x="190" y="53" text-anchor="middle">fetch batch 1</text>
+      <rect class="node info" x="260" y="38" width="120" height="22" rx="5"/><text class="mono" x="320" y="53" text-anchor="middle">fetch batch 2</text>
+      <rect class="node info" x="390" y="38" width="120" height="22" rx="5"/><text class="mono" x="450" y="53" text-anchor="middle">fetch batch 3</text>
+      <rect class="node ok" x="250" y="78" width="120" height="22" rx="5"/><text class="mono" x="310" y="93" text-anchor="middle">decode batch 1</text>
+      <rect class="node ok" x="380" y="78" width="120" height="22" rx="5"/><text class="mono" x="440" y="93" text-anchor="middle">decode batch 2</text>
+      <text x="10" y="148">Python</text>
+      <text class="dim" x="10" y="182">one event loop</text>
+      <rect class="node planned" x="130" y="168" width="110" height="22" rx="5"/><text class="mono" x="185" y="183" text-anchor="middle">await fetch</text>
+      <rect class="node warn" x="240" y="168" width="110" height="22" rx="5"/><text class="mono" x="295" y="183" text-anchor="middle">decode batch 1</text>
+      <rect class="node planned" x="350" y="168" width="110" height="22" rx="5"/><text class="mono" x="405" y="183" text-anchor="middle">await fetch</text>
+      <rect class="node warn" x="460" y="168" width="110" height="22" rx="5"/><text class="mono" x="515" y="183" text-anchor="middle">decode batch 2</text>
+      <path class="edge" d="M130 225H570" marker-end="url(#arrow-d)"/>
+      <defs><marker id="arrow-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--text-muted)"/></marker></defs>
+      <text class="dim" x="570" y="242" text-anchor="end">time</text>
+    </svg>
+    <figcaption>Blue: network work in client goroutines. Green: your Go loop decoding. Amber: Python decode, which blocks the loop. Dashed: an <code>await</code>, where the loop is free to run other tasks while bytes arrive. In Go the fetch of batch 2 overlaps the decode of batch 1. In Python the decode is serial with everything else on that loop. The widths are made up to show the shape. They are not measured.</figcaption>
+  </figure>
+
+  <div class="table-wrap"><table>
+    <thead><tr><th></th><th>Go</th><th>Python (asyncio)</th></tr></thead>
+    <tbody>
+      <tr><td>Units of concurrency</td><td>goroutines, scheduled across OS threads</td><td>tasks on one event loop</td></tr>
+      <tr><td>Switch point</td><td>the runtime preempts at any time</td><td>only at <code>await</code></td></tr>
+      <tr><td>Cores used by one process</td><td>several, because client goroutines run in parallel with your loop</td><td>one for Python code</td></tr>
+      <tr><td>Shared counters</td><td>Prometheus atomics, plus a mutex where maps are shared</td><td>no lock needed: no two tasks run between awaits</td></tr>
+      <tr><td>How to use more cores</td><td>more containers (and the process may already use several)</td><td>more containers</td></tr>
+      <tr><td>Same container cap</td><td colspan="2">0.5 CPU for producer and consumer in both languages (<code>.env</code>)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted">The expectation that Go does more per container is not measured in this project yet. The Go images were not run at the same scale.</p>
+</section>
+
+<section class="card" id="rabbitmq">
+  <div class="card-head"><h2>RabbitMQ super streams: the same idea, different words</h2><span class="tag ok">observed</span></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Concept</th><th>Redpanda</th><th>RabbitMQ super stream</th></tr></thead>
+    <tbody>
+      <tr><td>Unit of parallelism</td><td>partition</td><td>partition stream (benchmark-0 .. benchmark-3)</td></tr>
+      <tr><td>Producer picks it by</td><td>hash of the record key</td><td>hash of the <code>routing-key</code> application property, set to the message uuid</td></tr>
+      <tr><td>Consumers share work by</td><td>consumer group, rebalance</td><td>single active consumer under the name <code>benchmark-consumer</code></td></tr>
+      <tr><td>Two consumers, 4 partitions</td><td>2 partitions each</td><td>each partition has one active and one waiting consumer, split 2 and 2 (seen with <code>rabbitmq-streams list_stream_consumers</code>)</td></tr>
+      <tr><td>Python library</td><td>aiokafka</td><td>rstream</td></tr>
+      <tr><td>Python caveat</td><td colspan="2">rstream buffers sends and flushes every 0.5 s, so producer ack latency and E2E latency have a floor of up to 0.5 s. Measured about 816 ms mean ack at max rate. The Go client has no such floor.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<div class="phase"><span>evidence</span></div>
+
+<section class="card" id="measured">
+  <div class="card-head"><h2>What was measured, and what was not</h2><span class="tag warn">partly open</span></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Claim</th><th>Status</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr><td>Both producers write to all 4 partitions</td><td><span class="tag ok">observed</span></td><td class="mono">partition end offsets within 0.2%</td></tr>
+      <tr><td>4 consumers take one partition each</td><td><span class="tag ok">observed</span></td><td class="mono">rpk group describe: MEMBERS 4</td></tr>
+      <tr><td>Each consumer reads about 5.1k msg/s</td><td><span class="tag ok">observed</span></td><td class="mono">Prometheus, 30 s rate</td></tr>
+      <tr><td>Consumers keep up with producers</td><td><span class="tag warn">not quite</span></td><td class="mono">group lag grew to about 82k</td></tr>
+      <tr><td>Go and Python hash keys the same way</td><td><span class="tag ghost">from docs</span></td><td class="mono">franz-go docs, not tested</td></tr>
+      <tr><td>One Go consumer outruns one Python consumer</td><td><span class="tag ghost">not run</span></td><td class="mono">no Go run at this scale</td></tr>
+      <tr><td>RabbitMQ at 4 consumers</td><td><span class="tag ghost">not run</span></td><td class="mono">only 2 consumers were tried</td></tr>
+    </tbody>
+  </table></div>
+  <div class="dont">
+    <h3>Correction to what I said earlier</h3>
+    <ul>
+      <li>I said the lag was falling after scaling up. That was two samples. The later snapshot showed lag rising to about 82k, so 4 Python consumers at 0.5 CPU only roughly matched 2 producers running flat out.</li>
+      <li>Consumers beyond the partition count add nothing. To go faster than 4 consumers you need more partitions.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="card" id="try">
+  <div class="card-head"><h2>Reproduce it</h2><span class="tag info">commands</span></div>
+  <pre><code># monitoring first, then the Python stack at 2 producers and 4 consumers
+docker compose -f docker-compose-monitoring.yml up -d
+docker compose -f docker-compose-cadvisor-standard.yml up -d
+docker compose -f docker-compose-redpanda.yml -f docker-compose-redpanda-py.yml up -d --build \
+  --scale redpanda-producer=2 --scale redpanda-consumer=4
+
+# who owns which partition
+docker compose -f docker-compose-redpanda.yml exec redpanda rpk group describe benchmark-consumers
+
+# stop, without --remove-orphans (it also removes monitoring)
+docker compose -f docker-compose-redpanda.yml -f docker-compose-redpanda-py.yml down -v</code></pre>
+  <p class="muted">Swap <code>docker-compose-redpanda-py.yml</code> for nothing to run the Go images at the same scale and compare. Use <code>--build</code> when you switch.</p>
+</section>
+
+<footer>Redpanda v24.2.7, aiokafka 0.14.0, 0.5 CPU per producer and consumer, test stacks already torn down</footer>
+
+</body>
+</html>
