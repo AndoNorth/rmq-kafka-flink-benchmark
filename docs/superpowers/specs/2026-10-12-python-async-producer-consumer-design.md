@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: approved
 date: 2026-10-12
 updated: 2026-10-12
 issues: []
@@ -144,7 +144,7 @@ For each broker: start the stack with the override, then check:
 ### Observed results
 
 Run on 2026-10-12 (WSL2, default `.env`: `PARTITIONS=4`, broker 2 CPU, producer and consumer 0.5 CPU / 256M).
-Grafana was not opened in a browser.
+Grafana was not opened in a browser, so the visual panel check is still pending.
 Its panel queries were run against Prometheus (`localhost:9090`) instead, and all three families (throughput, ack latency p99, E2E latency p99) returned data for both brokers.
 
 - **Redpanda, Python producer and consumer:** started cleanly, no tracebacks, produced and consumed counters both grow, `consume_errors` and `produce_errors` stay 0.
@@ -158,7 +158,7 @@ Its panel queries were run against Prometheus (`localhost:9090`) instead, and al
   RabbitMQ E2E averaged about 53 ms (Go producer, Python consumer) and about 258 ms (Python producer, Go consumer).
 - **SIGTERM:** `docker compose stop` exits every Python container with code 0 in under 2 s and logs `producer exited` / `consumer exited`.
   Checked at `RATE_LIMIT=0` and `RATE_LIMIT=10` for both brokers, and at 2 and 2 instances.
-- **Memory at `RATE_LIMIT=0`:** producers stay around 32 MiB (Redpanda) and 57-60 MiB (RabbitMQ), consumers 26-31 MiB, all far below 256M.
+- **Memory at `RATE_LIMIT=0`:** producers stay around 32 MiB (Redpanda) and 57-60 MiB (RabbitMQ), sampled with `docker stats --no-stream` at the start and end of a 30 s window (not a continuous 60 s watch), consumers 26-31 MiB, all far below 256M.
 - **`MSG_SIZE_BYTES=0`:** producer and consumer run on both brokers, `consume_errors` 0 (about 96 bytes per message, the JSON envelope).
 - **Broker down and up (`RATE_LIMIT=1000`):** no container restarts (`RestartCount` 0) and production and consumption resume after the broker returns.
   Redpanda: `aiokafka` retries internally and logs about ten `NodeNotReadyError` lines per second while the broker is down.
@@ -172,25 +172,10 @@ Throughput and ack latency at `RATE_LIMIT=0`, one producer, measured over 30 s (
 | Redpanda (`aiokafka`) | 11.6k | 2.4 ms |
 | RabbitMQ (`rstream`) | 8.5k | 816 ms |
 
-`rstream` flushes buffered publishes on a 0.5 s timer, so the RabbitMQ ack latency (and the E2E latency with a Python producer, about 258 ms at 1000 msg/s) is dominated by that interval, not by the broker.
-Treat Python-producer RabbitMQ latency figures as bounded below by it.
+`rstream` flushes buffered publishes on a 0.5 s timer, so the RabbitMQ ack latency (and the E2E latency with a Python producer, about 258 ms at 1000 msg/s) is bounded below by that interval.
+The 816 ms mean is well above 0.5 s, so queueing behind the in-flight semaphore at `RATE_LIMIT=0` likely adds to it (not isolated).
+Treat Python-producer RabbitMQ latency figures as bounded below by the flush interval.
 
-Bug found and fixed during the run: the Go producer (franz-go) compresses batches with snappy by default, and the Python consumer crashed with `UnsupportedCodecError` (crash loop) when reading them.
-`python-snappy` was added to `py-consumer/requirements.txt`.
+The consumer needs `python-snappy` (pinned in `py-consumer/requirements.txt`) because Go producers (franz-go) compress Redpanda batches with snappy by default.
+Without it the Python consumer crash-loops with `UnsupportedCodecError`.
 The Python producer sends uncompressed batches, so the producer image does not need it.
-
-## Open Questions
-
-- ~~Exact `rstream` super-stream and SAC API at the pinned version.~~ Confirmed at `rstream` 1.1.0. The `super-stream` consumer property registers single active consumers per partition, verified with `rabbitmq-streams list_stream_consumers` (see Observed results).
-- `aiokafka` partitioner (not revisited, unchanged): its default murmur2 key partitioner differs from franz-go's sticky key partitioner. Partition placement may differ between Go and Python producers, throughput comparison is unaffected.
-
-## Out of Scope
-
-- `uvloop`, multi-process workers, and a task-per-partition consumer variant.
-- Running the testplan suite against the Python images and a Python vs Go comparison report.
-
-## References
-
-- `producer/` and `consumer/` (Go reference implementation)
-- `CLAUDE.md` (metric table, env vars, RabbitMQ client notes)
-- `docker-compose-redpanda.yml`, `docker-compose-rabbitmq.yml`, `prometheus/prometheus.yml`
